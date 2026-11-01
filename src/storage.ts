@@ -1,8 +1,8 @@
 import { newProfile, SYSTEMS, type Mode, type Profile, type Run } from "./game";
 import type { Watermarks } from "./api";
-export const SAVE_KEY = "burrow-power:save:v1";
+export const SAVE_KEY = "burrow-power:save:v2";
 export interface Save {
-  version: 1;
+  version: 2;
   activeMode: Mode;
   profiles: Record<Mode, Profile>;
   runs: Record<Mode, Run | null>;
@@ -11,8 +11,8 @@ export interface Save {
   revision: number;
 }
 export const freshSave = (): Save => ({
-  version: 1,
-  activeMode: "live",
+  version: 2,
+  activeMode: "practice",
   profiles: {
     live: newProfile(),
     practice: { ...newProfile(), blueprints: 1 },
@@ -52,7 +52,7 @@ function validRun(r: unknown, mode: Mode): boolean {
     !num(r.turn, 1, 6) ||
     !num(r.completed, 0, 6) ||
     !systems(r.systems) ||
-    !num(r.power, 0, 12) ||
+    !num(r.power, 0, 16) ||
     !num(r.turnGain, 0, 4) ||
     typeof r.ready !== "boolean" ||
     typeof r.observation !== "string" ||
@@ -74,11 +74,13 @@ function validRun(r: unknown, mode: Mode): boolean {
     (h, i) =>
       obj(h) &&
       h.turn === i + 1 &&
-      systems(h.allocation, 2) &&
+      typeof h.choice === "string" &&
+      typeof h.result === "string" &&
       systems(h.before) &&
       systems(h.after) &&
       num(h.gained, 0, 4) &&
-      num(h.spent, 0, 3) &&
+      num(h.spent, 0, 2) &&
+      num(h.salvaged, 0, 2) &&
       typeof h.event === "string" &&
       typeof h.observation === "string" &&
       num(h.rpmMilli, 0, Number.MAX_SAFE_INTEGER),
@@ -90,7 +92,7 @@ export function parseSave(raw: string | null): Save | null {
     const x: unknown = JSON.parse(raw);
     if (
       !obj(x) ||
-      x.version !== 1 ||
+      x.version !== 2 ||
       (x.activeMode !== undefined &&
         !["live", "practice"].includes(String(x.activeMode))) ||
       !obj(x.profiles) ||
@@ -131,7 +133,7 @@ export function openStorage(): {
     localStorage.setItem(SAVE_KEY + ":probe", "1");
     localStorage.removeItem(SAVE_KEY + ":probe");
     return {
-      save: parsed ?? freshSave(),
+      save: parsed ?? migrateLegacy(),
       available: true,
       recovered: !!raw && !parsed,
     };
@@ -145,5 +147,33 @@ export function persist(save: Save): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+// The redesigned encounters cannot resume allocation-era turns. Preserve earned
+// profiles and event watermarks, while leaving those old runs in their old key.
+function migrateLegacy(): Save {
+  const save = freshSave();
+  try {
+    const raw = localStorage.getItem("burrow-power:save:v1");
+    if (!raw || raw.length > 2000000) return save;
+    const old = JSON.parse(raw);
+    if (
+      old.version !== 1 ||
+      !validProfile(old.profiles?.live) ||
+      !validProfile(old.profiles?.practice)
+    )
+      return save;
+    const candidate = parseSave(
+      JSON.stringify({
+        ...save,
+        profiles: old.profiles,
+        watermarks: old.watermarks,
+        lastRound: old.lastRound,
+      }),
+    );
+    return candidate ?? save;
+  } catch {
+    return save;
   }
 }

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  canAllocate,
+  canChoose,
   creditTurn,
   finishProfile,
   forecast,
@@ -12,139 +12,157 @@ import {
   score,
   SYSTEMS,
   type Run,
-  type System,
-  type Values,
+  type Levels,
 } from "../src/game";
-function prepare(r: Run, gain = 0) {
-  return creditTurn(r, gain, "test fixture", 0);
+function ready(r: Run, gain = 0) {
+  return creditTurn(r, gain, "labelled test fixture", 0);
 }
-function solve(run: Run, gains: number[]): Run | null {
-  if (run.status !== "playing") return run.status === "won" ? run : null;
-  const ready = prepare(run, gains[run.turn - 1]);
-  const choices: Values[] = [];
-  for (let h = 0; h <= 2; h++)
-    for (let w = 0; w <= 2; w++)
-      for (let r = 0; r <= 2; r++)
-        if (canAllocate(ready, { heat: h, water: w, repair: r }))
-          choices.push({ heat: h, water: w, repair: r });
-  choices.sort((a, b) => {
-    const aa = preview(ready, a),
-      bb = preview(ready, b);
-    return Math.min(...Object.values(bb)) - Math.min(...Object.values(aa));
-  });
-  for (const choice of choices) {
-    const next = playTurn(ready, choice);
-    const result = solve(next, gains);
-    if (result) return result;
+function solve(r: Run, gains: number[]): Run | null {
+  if (r.status !== "playing") return r.status === "won" ? r : null;
+  const current = ready(r, gains[r.turn - 1]);
+  const choices = forecast(current).choices.filter((c) =>
+    canChoose(current, c.id),
+  );
+  choices.sort(
+    (a, b) =>
+      Math.min(...Object.values(preview(current, b.id))) -
+      Math.min(...Object.values(preview(current, a.id))),
+  );
+  for (const c of choices) {
+    const won = solve(playTurn(current, c.id), gains);
+    if (won) return won;
   }
   return null;
 }
-test("power is credited exactly once per turn, including a serialized restore", () => {
-  const run = prepare(newRun("live", 1), 4);
-  assert.equal(run.power, 12);
-  assert.equal(run.turnGain, 3);
-  assert.deepEqual(
-    creditTurn(JSON.parse(JSON.stringify(run)), 4, "later", 100000),
-    run,
-  );
-});
-test("allocation costs, per-room cap, turn cap, negative and fractional inputs are enforced", () => {
-  const r = prepare(newRun("practice", 1));
-  assert.equal(canAllocate(r, { heat: 2, water: 1, repair: 0 }), true);
-  for (const a of [
-    { heat: 3, water: 0, repair: 0 },
-    { heat: 2, water: 2, repair: 0 },
-    { heat: -1, water: 0, repair: 0 },
-    { heat: 0.5, water: 0, repair: 0 },
-  ])
-    assert.equal(canAllocate(r, a), false);
-  assert.throws(() => playTurn(r, { heat: 2, water: 2, repair: 0 }));
-});
-test("care applies before weather, never over 100; unspent power carries", () => {
-  const r = prepare(
-    { ...newRun("live", 1), systems: { heat: 96, water: 56, repair: 62 } },
-    0,
-  );
-  const n = playTurn(r, { heat: 2, water: 0, repair: 0 });
-  assert.equal(n.systems.heat, 85);
-  assert.equal(n.power, 7);
-  assert.equal(n.turn, 2);
-  assert.equal(n.ready, false);
-  assert.equal(n.history[0].spent, 2);
-});
-test("conditions below 30 add linked losses and change the next turn forecast", () => {
-  const r = {
-    ...newRun("live", 1),
-    systems: { heat: 29, water: 29, repair: 29 },
-  };
-  assert.deepEqual(forecast(r).loss, { heat: 18, water: 12, repair: 11 });
-  assert.equal(forecast(r).effects.length, 3);
-});
-test("an unfunded turn cannot be committed", () =>
-  assert.throws(() =>
-    playTurn(newRun("live", 1), { heat: 0, water: 0, repair: 0 }),
-  ));
-test("one system at zero immediately ends a shift; result cannot be played again", () => {
-  const r = prepare({
-    ...newRun("practice", 1),
-    systems: { heat: 15, water: 80, repair: 80 },
-  });
-  const n = playTurn(r, { heat: 0, water: 0, repair: 0 });
-  assert.equal(n.status, "lost");
-  assert.equal(n.systems.heat, 0);
-  assert.throws(() => playTurn(n, { heat: 1, water: 0, repair: 0 }));
-});
-test("all-idle level 1 can be won with only its 9-power reserve", () => {
-  const n = solve(newRun("live", 1), [0, 0, 0, 0, 0, 0]);
-  assert.ok(n);
-  assert.equal(n.completed, 6);
-  assert.equal(n.history.length, 6);
-  assert.ok(n.history.every((h) => h.gained === 0));
-  console.log(
-    "idle level 1 playthrough",
-    JSON.stringify(n.history.map((h) => h.allocation)),
-    "score",
-    score(n),
-  );
-});
-test("deeper levels have stronger losses; all three are winnable at captured active power", () => {
-  for (const level of [1, 2, 3] as const) {
-    const n = solve(newRun("live", level), [4, 4, 4, 4, 4, 4]);
-    assert.ok(n);
-    assert.equal(n.status, "won");
+test("each level has six authored threats and three distinct responses", () => {
+  for (const level of [1, 2, 3] as Levels[]) {
+    const names = new Set();
+    for (let turn = 1; turn <= 6; turn++) {
+      const e = forecast({ ...newRun("practice", level), turn });
+      names.add(e.name);
+      assert.equal(e.choices.length, 3);
+      assert.deepEqual(
+        e.choices.map((c) => c.cost),
+        [2, 1, 0],
+      );
+    }
+    assert.equal(names.size, 6);
   }
-  assert.equal(
-    forecast(newRun("live", 3)).loss.heat -
-      forecast(newRun("live", 1)).loss.heat,
-    4,
-  );
 });
-test("installed upgrades reduce only their own loss and improve idle survival at depth", () => {
-  const installed: System[] = ["heat", "water", "repair"];
-  const plain = forecast(newRun("live", 3)),
-    upgraded = forecast(newRun("live", 3, installed));
-  for (const s of SYSTEMS) assert.equal(plain.loss[s] - upgraded.loss[s], 2);
-  assert.ok(solve(newRun("live", 3, installed), [0, 0, 0, 0, 0, 0]));
+test("reserve-only full games are winnable at all depths without upgrades", () => {
+  for (const level of [1, 2, 3] as Levels[]) {
+    const win = solve(newRun("live", level), [0, 0, 0, 0, 0, 0]);
+    assert.ok(win);
+    assert.equal(win.completed, 6);
+    assert.ok(win.history.every((h) => h.gained === 0));
+    console.log(
+      JSON.stringify({
+        scenario: "idle hardware",
+        level,
+        choices: win.history.map((h) => h.choice),
+        rooms: win.systems,
+        points: score(win),
+      }),
+    );
+  }
 });
-test("neglect can lose a complete shift even with plenty of active wheel power", () => {
+test("designed practice is completable, including a simple protect-when-affordable strategy", () => {
+  for (const level of [1, 2, 3] as Levels[]) {
+    let r = newRun("practice", level);
+    while (r.status === "playing") {
+      r = ready(r, [0, 1, 0, 0, 1, 0][r.turn - 1]);
+      r = playTurn(r, forecast(r).choices.find((c) => canChoose(r, c.id))!.id);
+    }
+    assert.equal(r.status, "won");
+  }
+});
+test("neglect has a visible loss condition, even with an active wheel", () => {
   let r = newRun("live", 1);
-  while (r.status === "playing")
-    r = playTurn(prepare(r, 4), { heat: 2, water: 0, repair: 0 });
+  while (r.status === "playing") r = playTurn(ready(r, 4), "salvage");
   assert.equal(r.status, "lost");
-  assert.ok(r.systems.water === 0 || r.systems.repair === 0);
+  assert.equal(r.completed, 4);
+  assert.equal(r.systems.heat, 0);
+  assert.throws(() => playTurn(r, "protect"));
 });
-test("score and level progression follow the documented formula", () => {
-  const n = solve(newRun("practice", 1), [0, 0, 0, 0, 0, 0])!;
-  assert.equal(
-    score(n),
-    600 +
-      Object.values(n.systems).reduce((a, b) => a + b, 0) * 2 +
-      n.power * 25 +
-      100 +
-      500,
+test("the first decision has exact previews and a meaningful tradeoff", () => {
+  const r = ready(newRun("live", 1));
+  assert.deepEqual(preview(r, "protect"), { heat: 75, water: 58, repair: 58 });
+  assert.deepEqual(preview(r, "improvise"), {
+    heat: 66,
+    water: 50,
+    repair: 58,
+  });
+  assert.deepEqual(preview(r, "salvage"), { heat: 37, water: 58, repair: 58 });
+  const n = playTurn(r, "protect");
+  assert.equal(n.power, 7);
+  assert.deepEqual(n.systems, preview(r, "protect"));
+  assert.equal(n.ready, false);
+  assert.equal(n.turn, 2);
+  assert.throws(() => playTurn(n, "protect"));
+});
+test("unfunded responses, unknown IDs and replays fail closed", () => {
+  const r = { ...ready(newRun("practice", 1)), power: 0 };
+  assert.equal(canChoose(r, "protect"), false);
+  assert.equal(canChoose(r, "salvage"), true);
+  assert.throws(() => playTurn(r, "protect"));
+  assert.throws(() => playTurn(r, "unknown"));
+  assert.throws(() => preview(r, "unknown"));
+});
+test("wheel power is credited once per prepared encounter, including serialized restores", () => {
+  const r = ready(newRun("live", 1), 4);
+  assert.equal(r.power, 13);
+  assert.deepEqual(
+    creditTurn(JSON.parse(JSON.stringify(r)), 4, "later", 100000),
+    r,
   );
-  const p = finishProfile(newProfile(), n);
-  assert.equal(p.level, 2);
-  assert.equal(p.wins, 1);
-  assert.equal(p.best, score(n));
+  assert.equal(ready({ ...newRun("live", 1), power: 15 }, 4).power, 16);
+});
+test("flooding and aftershocks are state-dependent and announced in the forecast", () => {
+  const wet = {
+    ...newRun("practice", 2),
+    systems: { heat: 60, water: 39, repair: 60 },
+  };
+  assert.equal(forecast(wet).damage.repair, 13);
+  assert.equal(forecast(wet).effects.length, 1);
+  const shaken = {
+    ...newRun("practice", 3),
+    systems: { heat: 60, water: 60, repair: 39 },
+  };
+  for (const s of SYSTEMS)
+    assert.equal(
+      forecast(shaken).damage[s] - forecast(newRun("practice", 3)).damage[s],
+      4,
+    );
+});
+test("installed upgrades reduce their own damage without changing the other rooms", () => {
+  const a = forecast(newRun("live", 1)),
+    b = forecast(newRun("live", 1, ["heat"]));
+  assert.equal(a.damage.heat - b.damage.heat, 3);
+  assert.equal(a.damage.water, b.damage.water);
+});
+test("wins unlock levels; practice rewards cannot mint real wheel blueprints", () => {
+  for (const mode of ["live", "practice"] as const) {
+    const win = solve(newRun(mode, 1), [0, 0, 0, 0, 0, 0])!;
+    const p = finishProfile(newProfile(), win);
+    assert.equal(p.level, 2);
+    assert.equal(p.wins, 1);
+    assert.equal(p.blueprints, mode === "practice" ? 1 : 0);
+    assert.equal(p.best, score(win));
+  }
+});
+
+test("salvage previews and history report only the power that fits in the bank", () => {
+  for (const [power, expected] of [
+    [15, 1],
+    [16, 0],
+  ]) {
+    const r = { ...ready(newRun("live", 1)), power };
+    assert.equal(
+      forecast(r).choices.find((c) => c.id === "salvage")!.salvage,
+      expected,
+    );
+    const next = playTurn(r, "salvage");
+    assert.equal(next.power, 16);
+    assert.equal(next.history[0].salvaged, expected);
+  }
 });

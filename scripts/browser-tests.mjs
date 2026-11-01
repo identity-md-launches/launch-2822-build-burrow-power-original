@@ -1,641 +1,543 @@
+// Production-export tests. Intercepted API scenarios are explicitly labelled fixtures.
 import assert from "node:assert/strict";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { loadTool } from "./toolchain.mjs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { loadTool, requireTool } from "./toolchain.mjs";
 import { serveExport } from "./static-server.mjs";
-const playwright = await loadTool("playwright");
-const { chromium, webkit } = playwright.default ?? playwright;
-const { default: AxeBuilder } = await loadTool("@axe-core/playwright");
+const playwrightModule = await loadTool("playwright");
+const { chromium, webkit } = playwrightModule.default ?? playwrightModule;
+const AxeModule = requireTool("@axe-core/playwright");
+const AxeBuilder = AxeModule.default ?? AxeModule;
 const captured = JSON.parse(
-  await readFile("artifacts/api-observations.json", "utf8"),
+  await readFile("artifacts/redesign-api-observations.json", "utf8"),
 );
-const out = "test/scratch/browser-checks";
+const out = "test/scratch/browser";
 await mkdir(out, { recursive: true });
-const results = [];
-const errors = [];
-const resources = [];
+await mkdir("artifacts/screenshots", { recursive: true });
 const server = await serveExport();
-const key = "burrow-power:save:v1";
-let browser;
-async function test(name, fn) {
+const report = {
+  at: new Date().toISOString(),
+  target: "production dist/ served under /preview/",
+  checks: [],
+  limitations: [],
+  screenshots: [],
+};
+let failures = 0;
+async function check(name, fn) {
   try {
-    await fn();
-    results.push({ name, passed: true });
-    console.log("PASS", name);
+    const detail = await fn();
+    report.checks.push({ name, result: "passed", detail });
+    console.log(`PASS ${name}`);
   } catch (e) {
-    results.push({ name, passed: false, error: e.stack });
-    console.error("FAIL", name, e.message);
+    failures++;
+    report.checks.push({ name, result: "failed", error: e.message });
+    console.error(`FAIL ${name}: ${e.message}`);
   }
 }
-async function save(page) {
-  return page.evaluate((key) => JSON.parse(localStorage.getItem(key)), key);
+function bodies(state = "idle") {
+  const status = structuredClone(captured.status.body),
+    events = structuredClone(captured.events.body),
+    now = new Date().toISOString();
+  status.generatedAt = now;
+  status.measurement.observedAt = now;
+  status.measurement.receivedAt = now;
+  status.measurement.coreStatus = state === "active" ? "ACTIVE" : "IDLE";
+  status.measurement.rpmMilli = state === "active" ? 50000 : 0;
+  events.generatedAt = now;
+  events.chain.safeBlockTimestamp = now;
+  if (state === "stale")
+    status.measurement.observedAt = new Date(Date.now() - 121000).toISOString();
+  if (state === "simulated") status.measurement.provenance = "simulated";
+  return { status, events };
 }
-async function ready(page, mode = "live") {
-  await page.waitForFunction(
-    ({ key, mode }) => JSON.parse(localStorage.getItem(key))?.runs[mode]?.ready,
-    { key, mode },
-  );
-}
-async function createContext(
-  engine,
-  viewport,
-  scenario = "active",
+async function context(
+  browser,
+  width = 1440,
+  scenario = "offline",
   extra = {},
 ) {
-  const context = await engine.newContext({ viewport, ...extra });
-  const state = { scenario };
-  await context.route("https://api.squeekchain.com/**", async (route) => {
-    const url = route.request().url();
-    if (state.scenario === "outage") {
-      await route.abort("failed");
-      return;
-    }
-    if (state.scenario === "http503") {
-      await route.fulfill({
-        status: 503,
-        headers: { "Retry-After": "1" },
-        body: '{"error":"database_busy"}',
-      });
-      return;
-    }
-    let json;
-    if (url.includes("/v1/status")) {
-      json = structuredClone(captured.status);
-      json.generatedAt = new Date().toISOString();
-      json.measurement.observedAt = new Date().toISOString();
-      json.measurement.receivedAt = new Date().toISOString();
-      json.measurement.coreStatus =
-        state.scenario === "idle" ? "IDLE" : "ACTIVE";
-      json.measurement.rpmMilli = state.scenario === "idle" ? 0 : 77005;
-      if (state.scenario === "stale")
-        json.measurement.observedAt = new Date(
-          Date.now() - 121000,
-        ).toISOString();
-      if (state.scenario === "schema") json.schemaVersion = 99;
-      if (state.scenario === "malformed") json.measurement.rpmMilli = "fast";
-      if (state.scenario === "simulated")
-        json.measurement.provenance = "simulated";
-    } else {
-      json = structuredClone(captured.events);
-      json.generatedAt = new Date().toISOString();
-      json.chain.safeBlockTimestamp = new Date(
-        Date.now() - 180000,
-      ).toISOString();
-      if (state.scenario === "events-stale")
-        json.chain.safeBlockTimestamp = new Date(
-          Date.now() - 601000,
-        ).toISOString();
-      if (state.scenario === "events-unavailable")
-        json = {
-          schemaVersion: 3,
-          status: "unavailable",
-          reason: "indexer_unavailable",
-        };
-      if (state.scenario === "events-schema") json.schemaVersion = 42;
-      if (state.scenario === "duplicate")
-        json.events.push(...structuredClone(json.events));
-      if (state.scenario === "new-round") {
-        const next = structuredClone(json.events.find((e) => e.type === "system.settlement_completed"));
-        next.id += ":synthetic-test-next-round";
-        next.source.blockNumber = (BigInt(next.source.blockNumber) + 1n).toString();
-        next.payload.previousSettledThroughRound = next.payload.settledThroughRound;
-        next.payload.settledThroughRound = (BigInt(next.payload.settledThroughRound) + 1n).toString();
-        json.events.unshift(next);
-      }
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      headers: { "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify(json),
-    });
+  const ctx = await browser.newContext({
+    viewport: { width, height: width < 600 ? 844 : 1000 },
+    ...extra,
   });
-  const page = await context.newPage();
+  if (scenario === "offline")
+    await ctx.route("https://api.squeekchain.com/**", (r) => r.abort());
+  else {
+    const fixture = bodies(scenario);
+    await ctx.route("https://api.squeekchain.com/**", (r) => {
+      if (scenario === "rate")
+        return r.fulfill({
+          status: 429,
+          headers: { "Retry-After": "60" },
+          contentType: "application/json",
+          body: '{"error":"rate_limited"}',
+        });
+      return r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          r.request().url().includes("/v1/status")
+            ? fixture.status
+            : fixture.events,
+        ),
+      });
+    });
+  }
+  const page = await ctx.newPage(),
+    errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("response", (r) => {
     if (r.url().startsWith(server.url) && r.status() >= 400)
-      resources.push({ url: r.url(), status: r.status() });
+      errors.push(
+        `Local resource HTTP ${r.status()}: ${r.url().split("/preview/")[1]}`,
+      );
   });
   await page.goto(server.url);
-  await page.evaluate(() => document.fonts.ready);
-  return { context, page, state };
+  return { ctx, page, errors };
 }
-async function refresh(page) {
-  const details = page.locator(".source-details");
-  if (!(await details.evaluate((e) => e.open)))
-    await details.locator("summary").click();
-  await details.getByRole("button", { name: "Refresh source" }).click();
-  await page.waitForFunction(
-    () => !document.querySelector(".source-content button")?.disabled,
-  );
+async function capture(page, name, permanent = false) {
+  const path =
+    (permanent ? "artifacts/screenshots/" : out + "/") + name + ".jpg";
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path, fullPage: true, type: "jpeg", quality: 82 });
+  if (permanent) report.screenshots.push(path);
 }
-async function clickTurn(page, turn, mode = "live", allocate = true) {
-  await ready(page, mode);
-  if (allocate)
-    for (const s of ["heat", "water", "repair"])
+const readSave = (page) =>
+  page.evaluate(() => JSON.parse(localStorage.getItem("burrow-power:save:v2")));
+async function finish(page, mode = "practice", strategy = "first") {
+  let turns = 0;
+  while (await page.locator(".response-choices").count()) {
+    const before = await readSave(page);
+    const button =
+      strategy === "neglect"
+        ? page.locator('[data-choice="salvage"]')
+        : page.locator(".response-choice:enabled").first();
+    await button.click();
+    turns++;
+    const saved = await readSave(page);
+    assert.equal(saved.runs[mode].completed, before.runs[mode].completed + 1);
+    assert.ok(await page.locator(".outcome-list,.score-display").count());
+    if (await page.locator(".next-button").count())
+      await page.locator(".next-button").click();
+    if (turns > 6) throw new Error("Encounter loop exceeded six turns");
+  }
+  return (await readSave(page)).runs[mode];
+}
+async function tabTo(page, selector) {
+  for (let i = 0; i < 60; i++) {
+    if (
       await page
-        .getByRole("button", { name: `Increase ${s}`, exact: true })
-        .click();
-  await page
-    .getByRole("button", { name: `End turn ${turn}`, exact: true })
-    .click();
+        .locator(selector)
+        .evaluate((el) => el === document.activeElement)
+    )
+      return;
+    await page.keyboard.press("Tab");
+  }
+  throw new Error(`Tab did not reach ${selector}`);
 }
 try {
-  browser = await chromium.launch({ headless: true });
-  let current = await createContext(browser, { width: 1440, height: 1000 });
-  let { page, state } = current;
-  await test("Desktop first screen, live active state and Start shift", async () => {
-    await page
-      .getByRole("button", { name: "Start shift", exact: true })
-      .waitFor({ state: "visible" });
-    await page.waitForFunction(
-      () => !document.querySelector(".hero-actions button").disabled,
+  const browser = await chromium.launch({ headless: true });
+  for (const width of [1440, 390])
+    await check(
+      `Chromium ${width}px: full three-hollow practice campaign`,
+      async () => {
+        const { ctx, page, errors } = await context(browser, width);
+        const start = await page.locator(".start-button").boundingBox();
+        if (width === 390)
+          assert.ok(
+            start.y + start.height <= 844,
+            "Start action below the first screen",
+          );
+        assert.equal(await page.locator(".wheel-active").count(), 0);
+        await capture(page, `home-${width}`, true);
+        await page.locator(".start-button").click();
+        const choice = await page
+          .locator('[data-choice="protect"]')
+          .boundingBox();
+        if (width === 390)
+          assert.ok(
+            choice.y + choice.height <= 844,
+            "First response is not fully visible",
+          );
+        await page.locator('[data-choice="protect"]').focus();
+        assert.match(
+          await page.locator(".room-status.system-heat .room-name").innerText(),
+          /64 → 75/,
+        );
+        await capture(page, `encounter-${width}`, true);
+        for (let level = 1; level <= 3; level++) {
+          const run = await finish(page);
+          assert.equal(run.status, "won");
+          assert.equal(run.completed, 6);
+          assert.equal(run.level, level);
+          assert.equal((await readSave(page)).profiles.practice.wins, level);
+          await capture(page, `win-level-${level}-${width}`, level === 3);
+          if (level < 3)
+            await page
+              .getByRole("button", {
+                name: "Explore the next hollow",
+                exact: true,
+              })
+              .click();
+        }
+        assert.deepEqual(errors, []);
+        await ctx.close();
+        return {
+          levels: 3,
+          encounters: 18,
+          scriptOrLocalResourceErrors: errors,
+        };
+      },
     );
-    assert.match(await page.locator(".live-title").innerText(), /turning/);
-    assert.match(await page.locator(".power-indicator").innerText(), /\+4/);
-    assert.ok(
-      await page.locator(".observation-line time").getAttribute("datetime"),
-    );
-    const box = await page
-      .getByRole("button", { name: "Start shift", exact: true })
-      .boundingBox();
-    assert.ok(box.y + box.height < 1000);
-    await page.screenshot({ path: out + "/desktop-home.png", fullPage: true });
-  });
-  await test("Full six-turn desktop live game, allocation caps, score and result", async () => {
-    await page
-      .getByRole("button", { name: "Start shift", exact: true })
-      .click();
-    await ready(page);
-    assert.equal((await save(page)).runs.live.power, 12);
-    for (const s of ["heat", "water", "repair"])
-      await page
-        .getByRole("button", { name: `Increase ${s}`, exact: true })
-        .click();
-    assert.equal(
-      await page
-        .getByRole("button", { name: "Increase heat", exact: true })
-        .isDisabled(),
-      true,
-    );
-    await page
-      .getByRole("button", { name: "Decrease heat", exact: true })
-      .focus();
-    await page.keyboard.press("Enter");
-    assert.equal(
-      await page.locator('output[aria-label="heat allocation"]').innerText(),
-      "0",
-    );
-    await page
-      .getByRole("button", { name: "Increase heat", exact: true })
-      .focus();
-    await page.keyboard.press("Space");
-    await page.screenshot({ path: out + "/desktop-play.png", fullPage: true });
-    await page.getByRole("button", { name: "End turn 1", exact: true }).click();
-    for (let turn = 2; turn <= 6; turn++) await clickTurn(page, turn);
-    await page.locator(".result.won").waitFor();
-    const s = await save(page);
-    assert.equal(s.runs.live.completed, 6);
-    assert.equal(s.profiles.live.level, 2);
-    assert.ok(s.profiles.live.best > 0);
-    assert.equal(s.runs.live.history.length, 6);
-    await page.screenshot({
-      path: out + "/desktop-result.png",
-      fullPage: true,
-    });
-  });
-  await test("Safe round blueprints, installation and deeper level selection affect actual rules", async () => {
-    assert.equal((await save(page)).profiles.live.blueprints, 1);
-    await page
-      .getByRole("button", { name: "Install · 1 blueprint", exact: true })
-      .first()
-      .click();
-    assert.deepEqual((await save(page)).profiles.live.installed, ["heat"]);
-    assert.equal((await save(page)).profiles.live.blueprints, 0);
-    await page.locator("#level").selectOption("2");
-    await page
-      .getByRole("button", { name: "Play another shift", exact: true })
-      .click();
-    await ready(page);
-    assert.equal((await save(page)).runs.live.level, 2);
-    assert.match(
-      await page.locator(".forecast-loss").innerText(),
-      /−15 warmth/,
-    );
-  });
-  await test("Refresh preserves turn, power, upgrades and processed confirmed events", async () => {
-    await clickTurn(page, 1);
-    await ready(page);
-    const before = await save(page);
-    await page.reload();
-    await ready(page);
-    const after = await save(page);
-    assert.deepEqual(after.runs.live, before.runs.live);
-    assert.equal(
-      after.profiles.live.blueprints,
-      before.profiles.live.blueprints,
-    );
-    assert.deepEqual(after.watermarks, before.watermarks);
-  });
-  await test("Duplicate round response does not re-credit after refresh or restart", async () => {
-    const before = await save(page);
-    state.scenario = "duplicate";
-    await refresh(page);
-    assert.equal(
-      (await save(page)).profiles.live.blueprints,
-      before.profiles.live.blueprints,
-    );
-    await page
-      .getByRole("button", { name: "Restart shift", exact: true })
-      .click();
-    await page.getByRole("button", { name: "Keep playing" }).waitFor();
-    await page.getByRole("button", { name: "Keep playing" }).click();
-    assert.equal((await save(page)).runs.live.turn, 2);
-    await page
-      .getByRole("button", { name: "Restart shift", exact: true })
-      .click();
-    await page
-      .getByRole("button", { name: "Restart shift", exact: true })
-      .click();
-    await ready(page);
-    assert.equal((await save(page)).runs.live.turn, 1);
-    assert.deepEqual((await save(page)).watermarks, before.watermarks);
-    assert.equal(
-      (await save(page)).profiles.live.blueprints,
-      before.profiles.live.blueprints,
-    );
-  });
-  await test("Stale data pauses an existing live run and retry recovers without spending", async () => {
-    state.scenario = "stale";
-    const before = await save(page);
-    await refresh(page);
-    await page.locator(".error-panel").waitFor();
-    assert.equal(
-      await page
-        .getByRole("button", { name: "End turn 1", exact: true })
-        .isDisabled(),
-      true,
-    );
-    assert.match(await page.locator(".error-panel").innerText(), /120 seconds/);
-    assert.deepEqual((await save(page)).runs.live, before.runs.live);
-    await page.screenshot({ path: out + "/desktop-stale.png", fullPage: true });
-    state.scenario = "active";
-    await page.getByRole("button", { name: "Retry", exact: true }).click();
-    await page.locator(".error-panel").waitFor({ state: "hidden" });
-    assert.equal(
-      await page
-        .getByRole("button", { name: "End turn 1", exact: true })
-        .isEnabled(),
-      true,
-    );
-  });
-  await test("A new confirmed round unlocks one blueprint and repeated sync does not duplicate it", async () => {
-    const before = await save(page);
-    state.scenario = "new-round";
-    await refresh(page);
-    assert.equal((await save(page)).profiles.live.blueprints, before.profiles.live.blueprints + 1);
-    await refresh(page);
-    assert.equal((await save(page)).profiles.live.blueprints, before.profiles.live.blueprints + 1);
-    state.scenario = "active";
-  });
-  await test("Keyboard skip link preserves the active game and puts focus on main", async () => {
-    const before = await save(page);
-    const link = page.getByRole("link", { name: "Skip to content", exact: true });
-    await link.focus();
-    await page.keyboard.press("Enter");
-    assert.equal(await page.evaluate(() => document.activeElement?.id), "main");
-    assert.equal(await page.locator(".end-turn").isVisible(), true);
-    assert.deepEqual((await save(page)).runs.live, before.runs.live);
-  });
-  await test("A losing game reaches a clear result and can be restarted", async () => {
-    for (let turn = 1; turn <= 6; turn++) {
-      if ((await save(page)).runs.live.status !== "playing") break;
-      await clickTurn(page, turn, "live", false);
-    }
-    await page.locator(".result.lost").waitFor();
-    assert.match(
-      await page.locator(".result-copy").innerText(),
-      /reached zero/,
-    );
-    await page.screenshot({
-      path: out + "/desktop-failure.png",
-      fullPage: true,
-    });
-  });
-  await test("Rules navigation, in-page anchors and game points disclosure", async () => {
-    await page.getByRole("link", { name: "How to play", exact: true }).click();
-    await page
-      .getByRole("heading", { name: "A keeper’s field guide." })
-      .waitFor();
-    await page.getByRole("link", { name: "Wheel power", exact: true }).click();
-    assert.equal(await page.locator(".rules-page").isVisible(), true);
-    assert.match(await page.locator("#rules-power").innerText(), /25000/);
-    assert.match(await page.locator("#rules-score").innerText(), /not SQK/);
-    await page.screenshot({ path: out + "/desktop-rules.png", fullPage: true });
-  });
-  await test("Axe checks on rules and interactive Play have no serious/critical violations", async () => {
-    for (const hash of ["#how-to-play", "#play"]) {
-      await page.goto(server.url + hash);
-      await page.locator("h1").waitFor();
-      if (hash === "#play") {
-        await page.getByRole("button", {name: "Play another shift", exact: true}).click();
-        await ready(page);
+  await check(
+    "Keyboard: help, focus restoration and a full six-encounter win",
+    async () => {
+      const { ctx, page } = await context(browser, 390);
+      await tabTo(page, ".nav-link");
+      await page.keyboard.press("Enter");
+      assert.ok(
+        await page.locator("dialog.help-dialog").evaluate((e) => e.open),
+      );
+      await page.keyboard.press("Escape");
+      assert.ok(
+        await page
+          .locator(".nav-link")
+          .evaluate((e) => e === document.activeElement),
+      );
+      await tabTo(page, ".start-button");
+      await page.keyboard.press("Enter");
+      for (let turn = 1; turn <= 6; turn++) {
+        const choice = await page
+          .locator(".response-choice:enabled")
+          .first()
+          .getAttribute("data-choice");
+        await tabTo(page, `[data-choice="${choice}"]`);
+        await page.keyboard.press("Enter");
+        if (turn < 6) {
+          await tabTo(page, ".next-button");
+          await page.keyboard.press("Enter");
+        }
       }
-      const report = await new AxeBuilder({ page }).analyze();
-      const problems = report.violations.filter((v) =>
-        ["serious", "critical"].includes(v.impact),
-      );
-      assert.deepEqual(
-        problems.map((v) => ({
-          id: v.id,
-          nodes: v.nodes.map((n) => n.target),
-        })),
-        [],
-      );
-    }
-  });
-  await current.context.close();
-  // Full mobile touch game with idle telemetry and only the reserve.
-  current = await createContext(browser, { width: 390, height: 844 }, "idle", {
-    isMobile: true,
-    hasTouch: true,
-    deviceScaleFactor: 1,
-  });
-  page = current.page;
-  await test("390px first screen shows product and enabled primary action", async () => {
-    await page.waitForFunction(
-      () => !document.querySelector(".hero-actions button").disabled,
-    );
-    const box = await page
-      .getByRole("button", { name: "Start shift", exact: true })
-      .boundingBox();
-    assert.ok(box.y + box.height <= 844);
-    assert.equal(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth > innerWidth,
-      ),
-      false,
-    );
-    await page.screenshot({ path: out + "/mobile-home.png", fullPage: true });
-    await page.screenshot({ path: out + "/mobile-first-screen.png" });
-  });
-  await test("Full six-turn mobile touch game survives idle activity with no new power", async () => {
-    await page.getByRole("button", { name: "Start shift", exact: true }).tap();
-    await ready(page);
-    assert.equal((await save(page)).runs.live.power, 9);
-    await page.screenshot({ path: out + "/mobile-play.png", fullPage: true });
-    for (let turn = 1; turn <= 6; turn++) {
-      await ready(page);
-      if (turn <= 3)
-        for (const s of ["heat", "water", "repair"])
-          await page
-            .getByRole("button", { name: `Increase ${s}`, exact: true })
-            .tap();
+      assert.equal((await readSave(page)).runs.practice.status, "won");
+      await ctx.close();
+      return "Tab and Enter complete the full primary flow; Escape restores help trigger focus.";
+    },
+  );
+  await check(
+    "Loss, restart confirmation, save restoration and mode separation",
+    async () => {
+      const { ctx, page } = await context(browser, 390);
+      await page.locator(".start-button").click();
       await page
-        .getByRole("button", { name: `End turn ${turn}`, exact: true })
-        .tap();
-    }
-    await page.locator(".result.won").waitFor();
-    const s = await save(page);
-    assert.ok(s.runs.live.history.every((h) => h.gained === 0));
-    assert.equal(s.runs.live.power, 0);
-    await page.screenshot({ path: out + "/mobile-result.png", fullPage: true });
-  });
-  await test("Practice is labelled, separately saved, resumable and playable for six turns", async () => {
-    await page.getByRole("button", { name: "Practice", exact: true }).tap();
-    await page
-      .getByRole("button", { name: "Start practice", exact: true })
-      .tap();
-    await ready(page, "practice");
+        .getByRole("button", { name: "Restart shift", exact: true })
+        .click();
+      assert.ok(await page.locator(".restart-dialog").evaluate((e) => e.open));
+      await page.getByRole("button", { name: "Keep playing" }).click();
+      assert.equal((await readSave(page)).runs.practice.completed, 0);
+      await page.locator('[data-choice="salvage"]').click();
+      await page.reload();
+      assert.ok(await page.locator(".outcome-list").count());
+      assert.equal((await readSave(page)).runs.practice.completed, 1);
+      await page.locator(".next-button").click();
+      const lost = await finish(page, "practice", "neglect");
+      assert.equal(lost.status, "lost");
+      assert.equal(lost.completed, 4);
+      await capture(page, "loss-mobile", true);
+      assert.equal((await readSave(page)).profiles.live.wins, 0);
+      await page
+        .getByRole("button", { name: "Play this hollow again" })
+        .click();
+      assert.equal((await readSave(page)).runs.practice.completed, 0);
+      await ctx.close();
+      return {
+        lossEncounter: 4,
+        restore: "resolved encounter preserved",
+        replay: "new run",
+      };
+    },
+  );
+  await check(
+    "An earlier-hollow shift survives reload and mode changes after later unlocks",
+    async () => {
+      const { ctx, page } = await context(browser, 390);
+      await page.locator(".start-button").click();
+      await page.locator('[data-choice="protect"]').click();
+      await page.evaluate(() => {
+        const key = "burrow-power:save:v2",
+          save = JSON.parse(localStorage.getItem(key));
+        save.profiles.practice.level = 3;
+        localStorage.setItem(key, JSON.stringify(save));
+      });
+      await page.reload();
+      await page.locator(".brand").click();
+      await page
+        .getByRole("button", { name: "Real wheel", exact: true })
+        .click();
+      await page.getByRole("button", { name: "Practice", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Resume the shift", exact: true })
+        .click();
+      const run = (await readSave(page)).runs.practice;
+      assert.equal(run.level, 1);
+      assert.equal(run.completed, 1);
+      assert.ok(await page.locator(".outcome-list").count());
+      await ctx.close();
+      return "One completed encounter in hollow 1 is retained even when the profile has unlocked hollow 3.";
+    },
+  );
+  await check(
+    "Fixture integration: fresh active hardware, actual power conversion, dedup and pause motion",
+    async () => {
+      const { ctx, page } = await context(browser, 1440, "active");
+      await page
+        .getByRole("button", { name: "Real wheel", exact: true })
+        .click();
+      await page.locator(".source-fresh").waitFor({ state: "attached" });
+      await page.locator(".start-button:enabled").waitFor();
+      assert.equal((await readSave(page)).profiles.live.blueprints, 1);
+      await page.locator(".source-details summary").click();
+      await page.getByRole("button", { name: "Refresh official data" }).click();
+      await page
+        .getByRole("button", { name: "Refresh official data" })
+        .waitFor();
+      assert.equal((await readSave(page)).profiles.live.blueprints, 1);
+      await page.locator(".start-button").click();
+      assert.equal((await readSave(page)).runs.live.power, 11);
+      assert.equal((await readSave(page)).runs.live.turnGain, 2);
+      assert.equal(await page.locator(".wheel-active").count(), 1);
+      assert.equal(
+        await page
+          .locator(".wheel-spokes")
+          .evaluate((e) => getComputedStyle(e).animationName),
+        "wheel-spin",
+      );
+      await page.getByRole("button", { name: "Pause wheel motion" }).click();
+      assert.equal(await page.locator(".wheel-active").count(), 0);
+      const r = await finish(page, "live");
+      assert.equal(r.status, "won");
+      assert.equal((await readSave(page)).profiles.practice.wins, 0);
+      await page
+        .getByRole("button", { name: "Return to burrow", exact: true })
+        .click();
+      await page.locator(".workshop summary").click();
+      await page
+        .getByRole("button", { name: "Install · 1 blueprint", exact: true })
+        .first()
+        .click();
+      assert.deepEqual((await readSave(page)).profiles.live.installed, [
+        "heat",
+      ]);
+      assert.equal((await readSave(page)).profiles.live.blueprints, 0);
+      await ctx.close();
+      return {
+        source:
+          "intercepted fresh hardware fixture; not a real activity observation",
+        powerPerEncounter: 2,
+        blueprintsCreditedOnce: 1,
+        upgradeInstalled: "Moss blanket",
+      };
+    },
+  );
+  for (const state of ["idle", "stale", "simulated", "rate"])
+    await check(`Fixture integration: ${state} state is honest`, async () => {
+      const { ctx, page } = await context(browser, 390, state);
+      await page
+        .getByRole("button", { name: "Real wheel", exact: true })
+        .click();
+      if (state === "idle") {
+        await page.locator(".start-button:enabled").waitFor();
+        await page.locator(".start-button").click();
+        assert.equal((await readSave(page)).runs.live.turnGain, 0);
+        assert.equal(await page.locator(".wheel-active").count(), 0);
+        const run = await finish(page, "live");
+        assert.equal(run.status, "won");
+      } else {
+        await page.waitForFunction(
+          () =>
+            !document
+              .querySelector(".mode-note")
+              .textContent.includes("Checking official"),
+        );
+        assert.equal(await page.locator(".start-button").isDisabled(), true);
+        assert.equal(await page.locator(".wheel-active").count(), 0);
+        assert.match(
+          await page.locator(".wheel-state").innerText(),
+          /stale|unavailable|unsupported/i,
+        );
+        const text = await page.locator(".mode-note").innerText();
+        assert.ok(
+          state === "stale"
+            ? /120 seconds/.test(text)
+            : state === "simulated"
+              ? /simulated/.test(text)
+              : /429/.test(text),
+        );
+        await page
+          .getByRole("button", { name: "Practice", exact: true })
+          .click();
+        await page.locator(".start-button").click();
+        assert.equal(await page.locator(".response-choice").count(), 3);
+      }
+      await ctx.close();
+      return `Intercepted ${state} fixture; no fixture is claimed as a real observed hardware event in this report.`;
+    });
+  await check(
+    "Fixture integration: time passing pauses a prepared live turn without spending",
+    async () => {
+      const { ctx, page } = await context(browser, 390, "active");
+      await page
+        .getByRole("button", { name: "Real wheel", exact: true })
+        .click();
+      await page.locator(".start-button:enabled").waitFor();
+      await page.locator(".start-button").click();
+      const before = (await readSave(page)).runs.live;
+      await page.clock.install();
+      await page.clock.fastForward(121000);
+      await page.locator(".live-pause").waitFor();
+      const after = (await readSave(page)).runs.live;
+      assert.equal(after.completed, before.completed);
+      assert.equal(after.power, before.power);
+      assert.equal(await page.locator(".response-choice:enabled").count(), 0);
+      assert.equal(await page.locator(".wheel-active").count(), 0);
+      await ctx.close();
+      return "121 seconds simulated with the browser clock; prepared turn and bank unchanged.";
+    },
+  );
+  await check("Blocked localStorage keeps practice playable", async () => {
+    const ctx = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+    });
+    await ctx.addInitScript(() =>
+      Object.defineProperty(window, "localStorage", {
+        get() {
+          throw new Error("storage denied for test");
+        },
+      }),
+    );
+    await ctx.route("https://api.squeekchain.com/**", (r) => r.abort());
+    const page = await ctx.newPage();
+    await page.goto(server.url);
+    await page.locator(".start-button").click();
+    await page.locator('[data-choice="protect"]').click();
+    assert.equal(await page.locator(".outcome-list").count(), 1);
     assert.match(
-      await page.locator(".practice-banner").innerText(),
-      /bundled fixture/,
+      await page.locator(".warning-banner").innerText(),
+      /Practice works/,
     );
-    await clickTurn(page, 1, "practice");
-    await ready(page, "practice");
-    const before = await save(page);
-    await page.reload();
-    await page.locator(".practice-banner").waitFor();
-    await ready(page, "practice");
-    assert.deepEqual((await save(page)).runs.practice, before.runs.practice);
-    for (let turn = 2; turn <= 6; turn++)
-      await clickTurn(page, turn, "practice");
-    await page.locator(".result.won").waitFor();
-    const s = await save(page);
-    assert.equal(s.profiles.live.wins, 1);
-    assert.equal(s.profiles.practice.wins, 1);
-    assert.deepEqual(
-      s.runs.practice.history.map((h) => h.rpmMilli),
-      [95000, 77005, 0, 50000, 0, 111256],
-    );
+    await ctx.close();
+    return "In-memory practice works without claiming saved progress.";
   });
-  await test("Reflow at 320, 390, 720, 940 and 1440 on all pages", async () => {
-    for (const width of [320, 390, 720, 940, 1440])
-      for (const hash of ["#burrow", "#play", "#how-to-play"]) {
-        await page.setViewportSize({ width, height: 900 });
-        await page.goto(server.url + hash);
-        await page.locator("h1").waitFor();
-        assert.equal(
-          await page.evaluate(
+  await check(
+    "Responsive, reduced motion and automated accessibility on home, encounter and result",
+    async () => {
+      const audits = [];
+      for (const width of [320, 390, 768, 1440]) {
+        const { ctx, page } = await context(browser, width, "active", {
+          reducedMotion: "reduce",
+        });
+        const overflow = () =>
+          page.evaluate(
             () =>
               document.documentElement.scrollWidth >
               document.documentElement.clientWidth,
-          ),
-          false,
-          `${width} ${hash}`,
-        );
-      }
-  });
-  await test("Reduced motion has no running animations and loaded local font", async () => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto(server.url);
-    await page.evaluate(() => document.fonts.ready);
-    assert.equal(
-      await page.evaluate(
-        () =>
-          document.getAnimations().filter((a) => a.playState === "running")
-            .length,
-      ),
-      0,
-    );
-    assert.equal(
-      await page.evaluate(() => document.fonts.check("16px Manrope")),
-      true,
-    );
-  });
-  await current.context.close();
-  for (const scenario of [
-    "stale",
-    "outage",
-    "schema",
-    "malformed",
-    "simulated",
-    "events-stale",
-    "events-unavailable",
-    "events-schema",
-    "http503",
-  ]) {
-    await test(`${scenario}: live start pauses with explanation; practice remains playable`, async () => {
-      const c = await createContext(
-        browser,
-        { width: 390, height: 844 },
-        scenario,
-      );
-      try {
-        await c.page.waitForFunction(
-          () =>
-            document.querySelector(".live-title strong")?.textContent ===
-            "Live shifts paused",
-        );
-        assert.equal(
-          await c.page
-            .getByRole("button", { name: "Start shift", exact: true })
-            .isDisabled(),
-          true,
-        );
-        assert.ok(
-          (await c.page.locator(".home-live p").first().innerText()).length >
-            15,
-        );
-        await c.page
-          .getByRole("button", { name: "Play practice", exact: true })
+          );
+        assert.equal(await overflow(), false, `Home overflow ${width}`);
+        if (width === 390)
+          audits.push({
+            state: "home",
+            violations: (
+              await new AxeBuilder({ page })
+                .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+                .analyze()
+            ).violations,
+          });
+        await page.locator(".start-button").click();
+        assert.equal(await overflow(), false, `Encounter overflow ${width}`);
+        if (width === 390)
+          audits.push({
+            state: "encounter",
+            violations: (
+              await new AxeBuilder({ page })
+                .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+                .analyze()
+            ).violations,
+          });
+        const run = await finish(page);
+        assert.equal(run.status, "won");
+        assert.equal(await overflow(), false, `Result overflow ${width}`);
+        if (width === 390)
+          audits.push({
+            state: "result",
+            violations: (
+              await new AxeBuilder({ page })
+                .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+                .analyze()
+            ).violations,
+          });
+        await page
+          .getByRole("button", { name: "Return to burrow", exact: true })
           .click();
-        await ready(c.page, "practice");
-        assert.equal(
-          await c.page
-            .getByRole("button", { name: "End turn 1", exact: true })
-            .isEnabled(),
-          true,
-        );
-      } finally {
-        await c.context.close();
-      }
-    });
-  }
-  await test("Blocked localStorage opens safely and supports all six practice turns", async () => {
-    const c = await createContext(
-      browser,
-      { width: 390, height: 844 },
-      "active",
-    );
-    try {
-      await c.context.addInitScript(() => {
-        Object.defineProperty(window, "localStorage", {
-          get() {
-            throw new DOMException("Blocked", "SecurityError");
-          },
-        });
-      });
-      await c.page.reload();
-      await c.page.locator(".storage-warning").waitFor();
-      await c.page
-        .getByRole("button", { name: "Play practice", exact: true })
-        .click();
-      for (let turn = 1; turn <= 6; turn++) {
-        await c.page
-          .getByRole("button", { name: `End turn ${turn}`, exact: true })
-          .waitFor();
-        for (const s of ["heat", "water", "repair"])
-          await c.page
-            .getByRole("button", { name: `Increase ${s}`, exact: true })
-            .click();
-        await c.page
-          .getByRole("button", { name: `End turn ${turn}`, exact: true })
+        await page
+          .getByRole("button", { name: "Real wheel", exact: true })
           .click();
+        await page.locator(".source-fresh").waitFor({ state: "attached" });
+        assert.equal(
+          await page
+            .locator(".wheel-spokes")
+            .evaluate((e) => getComputedStyle(e).animationName),
+          "none",
+        );
+        await ctx.close();
       }
-      await c.page.locator(".result.won").waitFor();
-    } finally {
-      await c.context.close();
-    }
-  });
-  await test("Corrupt local save recovers with a visible explanation", async () => {
-    const c = await createContext(
-      browser,
-      { width: 390, height: 844 },
-      "active",
-    );
-    try {
-      // Finish the initial API sync before deliberately replacing its saved value.
-      // Otherwise the initial response can legitimately save over this test setup.
-      await c.page.waitForFunction(() => !document.querySelector(".hero-actions button")?.disabled);
-      await c.page.evaluate(
-        (key) => localStorage.setItem(key, "broken JSON"),
-        key,
+      await writeFile(out + "/axe.json", JSON.stringify(audits, null, 2));
+      assert.equal(
+        audits.reduce((n, a) => n + a.violations.length, 0),
+        0,
+        JSON.stringify(
+          audits.map((a) => ({
+            state: a.state,
+            violations: a.violations.map((v) => ({
+              id: v.id,
+              nodes: v.nodes.map((n) => n.target),
+            })),
+          })),
+        ),
       );
-      await c.page.reload();
-      await c.page.waitForFunction(
-        () => !document.querySelector(".hero-actions button").disabled,
-      );
-      await c.page
-        .getByRole("button", { name: "Start shift", exact: true })
-        .click();
-      await ready(c.page);
-      assert.match(
-        await c.page.locator(".recovery-notice").innerText(),
-        /unreadable local save/,
-      );
-    } finally {
-      await c.context.close();
-    }
-  });
-  await test("No uncaught JavaScript errors or missing local production assets", async () => {
-    assert.deepEqual(errors, []);
-    assert.deepEqual(resources, []);
-  });
+      return {
+        viewports: [320, 390, 768, 1440],
+        audits: audits.map((a) => ({
+          state: a.state,
+          violations: a.violations.length,
+        })),
+        activeWheelAnimationUnderReducedMotion: "none",
+      };
+    },
+  );
   await browser.close();
-  browser = null;
-  // WebKit is optional when the host cannot supply its native dependencies. Report exact outcome.
   try {
     const safari = await webkit.launch({ headless: true });
-    await test("WebKit 390px complete practice shift", async () => {
-      const c = await createContext(
-        safari,
-        { width: 390, height: 844 },
-        "idle",
-      );
-      try {
-        await c.page
-          .getByRole("button", { name: "Play practice", exact: true })
-          .click();
-        for (let turn = 1; turn <= 6; turn++)
-          await clickTurn(c.page, turn, "practice");
-        await c.page.locator(".result.won").waitFor();
-        await c.page.screenshot({
-          path: out + "/webkit-mobile-result.png",
-          fullPage: true,
-        });
-      } finally {
-        await c.context.close();
-      }
-    });
+    for (const width of [1440, 390])
+      await check(`WebKit ${width}px: complete practice game`, async () => {
+        const { ctx, page, errors } = await context(safari, width);
+        await page.locator(".start-button").click();
+        const run = await finish(page);
+        assert.equal(run.status, "won");
+        assert.deepEqual(errors, []);
+        await ctx.close();
+        return "Six encounters completed in WebKit.";
+      });
     await safari.close();
-  } catch (e) {
-    results.push({
-      name: "WebKit complete practice shift",
-      passed: null,
-      limitation: e.message,
-    });
-    console.log(
-      "UNPERFORMED WebKit:",
-      e.message.split("\n").slice(0, 5).join(" "),
+  } catch {
+    report.limitations.push(
+      "WebKit could not launch because its native runtime dependencies were unavailable. No Safari/WebKit result is claimed.",
     );
+    console.log("UNPERFORMED WebKit: browser runtime unavailable");
   }
 } finally {
-  if (browser) await browser.close();
-  await server.close();
+  report.result = failures ? "failed" : "passed";
   await writeFile(
-    out + "/results.json",
-    JSON.stringify(
-      { at: new Date().toISOString(), results, errors, resources },
-      null,
-      2,
-    ),
+    "artifacts/browser-validation.json",
+    JSON.stringify(report, null, 2) + "\n",
   );
-  console.log(
-    JSON.stringify({
-      passed: results.filter((r) => r.passed === true).length,
-      failed: results.filter((r) => r.passed === false).length,
-      unperformed: results.filter((r) => r.passed === null).length,
-    }),
-  );
-  if (results.some((r) => r.passed === false)) process.exitCode = 1;
+  await server.close();
 }
+if (failures) process.exitCode = 1;

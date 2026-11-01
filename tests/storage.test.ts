@@ -24,7 +24,7 @@ test("corrupt, unsupported and oversized saves are rejected without throwing", (
     "garbage",
     "null",
     "{}",
-    JSON.stringify({ ...freshSave(), version: 2 }),
+    JSON.stringify({ ...freshSave(), version: 3 }),
     " ".repeat(2000001),
   ])
     assert.equal(parseSave(raw), null);
@@ -43,5 +43,37 @@ test("blocked browser storage does not prevent initialization or in-memory play"
   assert.equal(loaded.available, false);
   assert.equal(loaded.save.profiles.practice.blueprints, 1);
   assert.equal(persist(freshSave()), false);
+  Reflect.deleteProperty(globalThis, "localStorage");
+});
+
+test("legacy profiles and settlement watermarks migrate without replaying old turns", () => {
+  const save = freshSave();
+  save.profiles.live.level = 3;
+  save.profiles.live.blueprints = 4;
+  save.profiles.live.installed = ["heat"];
+  save.watermarks = {
+    "test-fixture:deployment": {
+      block: "10",
+      log: "2",
+      eventId: "fixture:settlement",
+      round: "3",
+    },
+  };
+  const old = { ...save, version: 1 };
+  const memory = new Map([["burrow-power:save:v1", JSON.stringify(old)]]);
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => memory.get(key) ?? null,
+      setItem: (key: string, value: string) => memory.set(key, value),
+      removeItem: (key: string) => memory.delete(key),
+    },
+  });
+  const loaded = openStorage();
+  assert.deepEqual(loaded.save.profiles, save.profiles);
+  assert.deepEqual(loaded.save.watermarks, save.watermarks);
+  assert.equal(loaded.save.version, 2);
+  assert.deepEqual(loaded.save.runs, { live: null, practice: null });
+  assert.ok(memory.has("burrow-power:save:v1"));
   Reflect.deleteProperty(globalThis, "localStorage");
 });

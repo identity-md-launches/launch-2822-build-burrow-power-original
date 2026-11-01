@@ -2,102 +2,97 @@
 
 ## Overview
 
-Burrow Power is a quiet, dark strategy game for the Squeekchain community. Its visual idea is an underground habitat drawn as an LED dot cutaway: amber nest, green garden, and pale teal tunnels. The same three systems appear in the illustration, resource meters, forecast, and allocation controls. The scene is original SVG artwork built from circles and explicit sprite rows; it is not a screenshot of another game.
+Burrow Power is a single-player survival game for Squeekchain players. Its visual idea is a small underground home drawn in LED dots: amber nest, lime garden, violet tunnels and a teal hamster wheel. The habitat carries the atmosphere; a separate encounter panel carries the decision. The player sees a threat, picks a response and gets a deliberate result beat before the next encounter.
 
-The interface is deliberately flat. One lime action advances the current task. Spacing, alignment, and restrained separators group information; illustration carries the atmosphere. The Burrow introduction places the product name, concise premise, live eligibility, and both start actions before the scene on mobile. Play puts decisions next to the habitat on desktop and below it in a single reading order on mobile.
-
-Source of truth: `src/styles.css`, `src/components/BurrowScene.tsx`, `src/components/Icon.tsx`, and `src/App.tsx`. Build configuration is in `scripts/toolchain.mjs`. This document describes the final implementation, not proposed variants.
+Source of truth: `src/styles.css`, `src/components/BurrowScene.tsx`, `src/components/Icon.tsx`, `src/App.tsx` and `src/game.ts`. The existing React/TypeScript stack, locally bundled Manrope font and static Vite build are retained. This describes the implemented redesign, not a proposal.
 
 ## Colors
 
-The canonical system uses hex semantic properties in `src/styles.css:8`.
+Semantic tokens are defined in `src/styles.css:8`, using the existing project’s hex notation and a single dark theme.
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--bg` | `#10130f` | Page ground. |
-| `--surface` | `#171c15` | Control panel, quiet icon backgrounds, practice banner. |
-| `--raised` | `#1e251b` | Stepper controls and disabled main action. |
-| `--hover` | `#293321` | Hovered stepper. |
-| `--line` | `#30392b` | Structural separators, boundaries, unfilled meters. |
-| `--text` | `#edf0e5` | Primary text. |
-| `--muted` | `#a3ae99` | Descriptions and secondary labels. |
-| `--subtle` | `#89957f` | Captions, future values, footer. |
-| `--accent` | `#c7ee88` | Primary action fill, active progress, signature hero line. |
-| `--accent-hover` | `#d7f7a4` | Primary hover. |
-| `--accent-ink` | `#17200e` | Text/icons on the lime primary button. |
-| `--warm` | `#e2b875` | Nest identity and pause/forecast emphasis. |
-| `--garden` | `#b1d186` | Garden identity and positive feedback. |
-| `--tunnel` | `#94bdb1` | Tunnel identity. |
-| `--danger` | `#f5ad91` | At-risk and predicted-failure copy. |
-| `--focus` | `#e0f6b8` | Keyboard focus perimeter. |
+| Token            | Value     | Job                                                 |
+| ---------------- | --------- | --------------------------------------------------- |
+| `--bg`           | `#0c1515` | Page background                                     |
+| `--surface`      | `#121f20` | Encounter panel and dialogs                         |
+| `--raised`       | `#1b2c2b` | Quiet elevated controls                             |
+| `--hover`        | `#233a35` | Response and secondary-control hover                |
+| `--line`         | `#304743` | Structural separators and habitat edge              |
+| `--text`         | `#f1f2e9` | Primary text                                        |
+| `--muted`        | `#a8bbb3` | Supporting text and labels                          |
+| `--accent`       | `#cff58b` | Primary action, positive deltas, completed progress |
+| `--accent-hover` | `#e0ffac` | Primary action hover                                |
+| `--accent-ink`   | `#172017` | Text/icons on the primary fill                      |
+| `--warm`         | `#ffc576` | Nest identity                                       |
+| `--garden`       | `#b6ef6a` | Garden identity                                     |
+| `--tunnel`       | `#b9a0ff` | Tunnel identity                                     |
+| `--danger`       | `#ffb08c` | Damage, dangerous responses and data interruptions  |
+| `--fresh`        | `#83e4c9` | Available real wheel source                         |
+| `--focus`        | `#e6ffb9` | Keyboard perimeter                                  |
 
-There is one dark theme with `color-scheme: dark`; no light-theme switch is implemented. System identity always has a name and icon in addition to hue. Warnings say why play paused and how to recover. Native meter values also remain available as numbers.
+`.system-heat`, `.system-water` and `.system-repair` set `--room-color` for reusable room components. Every condition also has words, numbers or an icon. The artwork owns additional soil/sky/plant colors inside its SVG; they are illustration values, not additional status meanings.
 
-Special warning grounds are `#30271d` for storage recovery and `#2b241b` for live pause. The SVG owns its illustrative soil/room palette; those values are artwork, not additional UI status tokens.
-
-Actual browser-computed pairs were measured in `artifacts/rendered-measurements.json`: body text/page **16.22:1**, muted description/page **8.08:1**, caption/page **5.94:1**, enabled primary ink/fill **12.82:1**, and loading-disabled primary **6.79:1**. The pinned probe found every measured entry-page text pair above its 4.5:1 (3:1 large) threshold. Artwork text and every hypothetical background combination were not comprehensively audited.
+The pinned rendered probe found all measured interface text above WCAG’s 4.5:1 threshold, or 3:1 for large text. Identified computed pairs and their ratios are in `artifacts/rendered-measurements.json`. That does not establish contrast for every decorative LED dot or SVG label. Essential room information is repeated in interface text outside the artwork.
 
 ## Typography
 
-`Manrope, Arial, sans-serif` is the only UI family. The bundled Latin WOFF2 is `src/assets/manrope-latin.woff2`, declared at 400–700 with `font-display: swap`. The interface actually uses **400, 600, and 700**. The browser check confirmed that the local font loaded. Font licensing is in `public/licenses/Manrope-OFL.txt` and the export.
+The UI uses `Manrope, Arial, sans-serif`. `src/assets/manrope-latin.woff2` is served locally through `@font-face` with `font-display: swap`, declaring weights 400–700. The interface uses **400, 600 and 700**. The browser measurement checks that the Manrope face loaded. The retained font license is `public/licenses/Manrope-OFL.txt`.
 
-The six tokens are `--small: 12px`, `--label: 14px`, `--body: 16px`, `--section: 24px`, `--title: 40px`, and `--display: 64px`. Captions/source metadata use 12; controls/descriptions use 14; reading copy uses 16; section headings and condition values use 24; Play/How to Play titles use 40 on desktop; the wide introduction uses 64. At most five sizes occur on the entry page at each measured width; there are six available across the whole product.
+| Token       | Size | Role                                                |
+| ----------- | ---- | --------------------------------------------------- |
+| `--small`   | 12px | Supporting labels, data provenance, compact effects |
+| `--label`   | 14px | Controls, response names, supporting game copy      |
+| `--body`    | 16px | Desktop prose and body copy                         |
+| `--section` | 24px | Section headings and mobile encounter titles        |
+| `--title`   | 32px | Encounter titles, mobile opening headline           |
+| `--display` | 64px | Wide-screen opening headline and local score        |
 
-Headings use weight 600, balanced wrapping, and tighter line height. The brand is 700. The hero is 1.1 line-height and −0.055em tracking at 64px, changing to −0.04em at 40px. Section headings use 1.3 and −0.025em; body copy uses 1.65, with the field guide at 1.75 (1.7 mobile). Numeric power, conditions, score, and logs use tabular digits to prevent shifting. Native selects stay at 16px to avoid iOS input zoom. Reading content is limited to a 700px column; short descriptions have character-based measures.
-
-SVG scene labels use 13px sans-serif as illustration lettering. They are not a second interface type scale; equivalent condition names and values are real HTML outside the scene.
+Heading line height is 1.15, default body 1.5, story text 1.6 and expanded reference copy 1.7. Large headings use negative tracking (`-.055em` opening headline, `-.035em` encounter title); body tracking stays natural. Changing power, room values and score use tabular numbers. Labels wrap rather than truncate. Room values move to a consistent second line on phones. The LED scene uses 24-unit SVG labels which scale with the artwork; those are not extra UI font-size steps.
 
 ## Layout
 
-The shared `.app-shell` is at most 1440px with 64px inline padding. Above 1440 it allows 1568px with 96px padding. Padding becomes 40px at 1200, 24px at 720, and 16px below 360. Header, sections, and footer reuse these edges.
+`.app-shell` caps at 1408px with 48px inline padding. Main spacing steps are 8, 12, 16, 20, 24, 32 and 48px, with smaller optical adjustments in icons and LED art. `.game-layout` is a two-column grid: `minmax(0,1.75fr)` habitat and `minmax(350px,1fr)` encounter panel with a 24px gap. Below 1150px the ratio becomes 1.45:1 with a 330px panel minimum and 20px gap. At 860px the game becomes one column.
 
-Spacing uses 4/8px for tightly related details and 16/24/32/40/48px between groups. Larger hero spacing is intentional: 76px above and 60px below at wide widths, reduced to 36px/28px on mobile. Avoid adding bordered wrappers around every group.
+At 540px and below, page gutters are 16px, panels use 16px padding and 12px radii, and the initial start action moves directly below the mode switch and mission heading. The three hollow controls become rows. During mobile play the duplicate habitat title is hidden, SVG height becomes 172px, and the scene/panel gap is 12px. This preserves the room conditions and first response within the 390×844 initial play viewport. At 360px, gutters become 12px and secondary text wraps further.
 
-- **Introduction:** `.home-hero` has two flexible columns, copy and art, with 48px gap. At 720 it becomes one column, with the actions above the illustration. Both start actions are visible in the first 390×844 screen. Intro system descriptions are three columns on desktop and aligned icon/text rows on mobile.
-- **Play:** `.game-layout` uses a flexible habitat column and a minimum-350px controls column. Meters share three columns on wide desktop, temporarily stack beside the narrow habitat at intermediate widths, then return to three compact columns in the mobile reading order. At 720 the scene is at most 210px high, followed by meters, controls, and feedback. The end-turn action stays in normal flow and is reachable by scrolling.
-- **Workshop:** three upgrade columns become stacked rows at 720. The labelled level select wraps rather than overflowing.
-- **Rules:** a 200px contents column, 64px gap, and maximum-700px reading column collapse to a wrapping contents list and one reading column. Anchor headings have scroll margin.
-- **Disclosure:** the data-source details and shift log use native `details/summary`. Log tables can scroll inside their own clearly disclosed container; the page itself does not scroll horizontally.
+The header keeps the product at the leading edge and How to play at the trailing edge. It is not sticky. Supporting workshop/source information uses explicit native disclosures below the main game. No essential action is hidden in those disclosures. The habitat scales with its SVG viewBox rather than using a raster background.
 
-Implemented breakpoints are 1200, 940, 720, and 359px, plus the very-wide 1441px branch. Rendered reflow was checked at 320, 390, 720, 940, and 1440 on all three pages. Text-spacing stress was also checked on mobile Play without page overflow. Very-wide desktop, browser-native 200% zoom, and RTL mirroring were not visually checked.
+The production interaction suite checked home, encounter and result at 320, 390, 768 and 1440px with no horizontal overflow. Native browser zoom, alternate language expansion and RTL were not verified; these remain review limits rather than claims of support.
 
 ## Elevation & Depth
 
-No drop shadows or gradient text are used. The controls panel and entry illustration have a 1px structural boundary. Habitat art on Play removes that outer boundary so the meters and scene read as one game surface. Soil dots and room tones create illustrative depth without adding interface elevation.
+The interface is flat: tonal panels, deliberate space and structural borders, with no persistent card shadows. The habitat has a 1px outline; choices use borders to communicate their response surface and focus. Native modal dialogs create the only raised overlay, using a dark backdrop and 5px backdrop blur.
 
-The header/footer and turn/forecast groups use separators. Errors use an amber-tinted ground and leading rule. There are no modals or focus traps. Restart confirmation is an inline replacement with explicit restart/cancel actions, keeping the choice in the normal tab order.
+LED paths and room fills establish depth inside the scene. A helped room receives a finite brightness flash; power received gets a short highlight. These are state feedback, not perpetual decoration. The HUD and result text carry the same information when motion is reduced.
 
 ## Shapes
 
-`--radius: 12px` is used for major bounded surfaces. Primary/secondary buttons and the practice banner use 8px; steppers/selects use 6px; the icon background uses 10px. Tiny meter/power segments use 2–3px. Scene dots and LED sprite dots are circles, while the product mark is a small dot hamster.
+World and encounter panels use 16px radii, reduced to 12px on phones. Primary/secondary controls use 9px; response and level controls use 10px. The mode switch has a 9px container with 6px inner segments. Dialogs use 18px. Encounter progress is circular. Decorative dots, segmented condition lights and the pixel hamster are intentionally rounded LED shapes.
 
-Text is not clipped or ellipsized. Only native meter graphics and screen-reader-only utility text intentionally use clipping. Controls remain distinct from static text. CSS geometry belongs to the interface; physical left/right coordinates inside the burrow SVG describe the artwork.
+Controls use a 2px `--focus` outline with 4px offset. Primary buttons are at least 48px tall; the mode buttons and text actions are at least 44px. The final probe found no first-screen controls below the 44px comfort target at 390px.
 
 ## Components
 
-| Component/pattern | Source | API and behavior |
-| --- | --- | --- |
-| Primary/secondary action | `src/styles.css:212`; usages in `src/App.tsx` | `.button.primary` advances the task; `.button.secondary` is a peer action. Hover, disabled, keyboard focus, and optional pressed feedback are explicit. Standard actions are at least 48px high. |
-| `Icon`, `HamsterMark` | `src/components/Icon.tsx` | One original SVG icon set. `Icon` takes `name` and optional `size`, uses `currentColor`, and is decorative to assistive technology. Meaning stays in the adjacent label. |
-| `BurrowScene` | `src/components/BurrowScene.tsx:59` | Optional `systems`, `compact`, and `selected` allocation props. Room brightness reflects condition; the chosen rooms have emphasized boundaries. Its labelled SVG is illustrative, with actual meters outside. |
-| `SystemMeter` | `src/App.tsx:1363` | Local pattern with `system`, `value`, and optional `next`. Icon/name, numeric condition, text status, native meter, and explicit after-turn preview. Risk includes words, not color alone. |
-| Allocation row | `src/App.tsx`; `.allocation-row` at `src/styles.css:1028` | Native decrease/increase buttons with unique accessible names, labelled numeric output, visible unit cost/gain, and disabled states for power/turn/room limits. Desktop steppers are 34×40; mobile 40×44, with a 34px width on the smallest layout. |
-| Mode toggle | `src/App.tsx`; `.mode-toggle` | Two native buttons with `aria-pressed`. Live and practice saves are independent; last-used mode survives refresh. Practice has a persistent fixture banner. |
-| Turn feedback/result | `src/App.tsx`; `.turn-feedback` at `src/styles.css:900` | Stable polite status region, persistent numeric turn history, explicit success/failure and score. Result heading receives focus. Failure can be played again. |
-| `SourceDetails` | `src/App.tsx:1405` | Native disclosure with `live`, `error`, `loading`, and `refresh` props. Shows real endpoint links, observation/check times, safe block, wheel state, reason, and retry. The direct observation line also appears near the current home status and credited live turn. |
-| Save recovery/pause | `src/App.tsx:378`; `src/storage.ts` | Storage checks and parse validation never prevent practice from opening. Persistent recovery explanation, session-only disclosure, and disabled live interactions avoid falsely promising durable event tracking. |
+| Component/pattern           | Source                                                   | Behavior and reuse                                                                                                                                                                                                                                         |
+| --------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Habitat                     | `src/components/BurrowScene.tsx:71`                      | `systems`, `mode`, `active`, `event`, `selected`, `deltas`, `resolved`, `won`, `lost`, `motion`, `wheelLabel`. Renders original dot art, threat shapes, condition damage, previews and results. `active` must come from accepted fresh real hardware data. |
+| Room conditions             | Same component; `.room-statuses` in `src/styles.css:326` | Room name/icon, exact condition or preview, LED segments and a text condition. Color variables follow the room. Below 25 is dangerous; 0 is lost; 25–49 needs care.                                                                                        |
+| Encounter choices           | `src/App.tsx:729`; `.response-choice`                    | Native buttons showing action, power cost/gain, description and exact net room changes. Hover and keyboard focus preview the habitat. Unaffordable or paused actions are disabled; dangerous responses explicitly name rooms that will reach 0.            |
+| Outcome and result          | `src/App.tsx`; `.outcome-list`, `.score-display`         | Before/after room values, response feedback, remaining power and a separate next action. Final screens distinguish win/loss and label local points. State changes focus the encounter/result heading and update a stable polite status region.             |
+| Night progress              | `src/App.tsx:462`; `.night-progress`                     | Labelled group describes completed encounters out of six. Decorative markers are hidden from assistive technology; checkmarks distinguish completed stops.                                                                                                 |
+| Modes and saves             | `src/App.tsx`, `src/storage.ts`                          | Native pressed-state buttons. Practice and real progress remain separate. v1 profiles/watermarks migrate, while old incompatible active turns remain in the old key. Storage loss explains session-only practice.                                          |
+| Workshop and source details | `src/App.tsx`; `.workshop`, `.source-details`            | Native `details/summary`; available blueprints, install restrictions, API observations, data error and retry are disclosed on demand. Upgrades cannot install during an active shift.                                                                      |
+| Help/restart dialogs        | `src/App.tsx`; `dialog`                                  | Native `showModal()` gives modal focus containment and an inert background. Escape closes; close restores the trigger. Restart names what resets and what stays saved.                                                                                     |
+| Buttons and icons           | `src/styles.css:524`, `src/components/Icon.tsx`          | One primary action per phase, quiet secondary controls, shared current-color outline icons and original hamster mark. Preserve hover, disabled, keyboard and press states.                                                                                 |
 
-All interactive controls have a 2px focus outline with 4px offset. Actual keyboard navigation produced a visible `--focus` ring around the stepper. The first focusable link skips to the current page’s main content without changing modes/routes. Native links remain links; action controls remain buttons. Page changes focus their heading.
-
-Motion is limited to a 120ms transition of named properties with `cubic-bezier(.2,0,0,1)` and press scale 0.96. It exists only inside `prefers-reduced-motion: no-preference`. There is no autoplay or endless animation.
+Motion is defined in `src/styles.css:1671` and only enabled under `prefers-reduced-motion: no-preference`. The real wheel rotates over 2s; Pip’s running motion alternates over .3s. Both require the real-activity class. Hover/press transitions are 120ms with `cubic-bezier(.2,0,0,1)`; press scale is .96. Feedback uses finite .25–.7s sequences. Reduced motion disables all animations/transitions. The footer’s motion control also pauses wheel/hamster motion. A source becoming stale stops movement immediately on the freshness tick.
 
 ## Do’s and Don’ts
 
-- Start another page inside `.app-shell` and the existing header/main/footer. Add a recognized hash route rather than a server-dependent pathname.
-- Use the existing six type tokens and role colors. Match a new room/status with words and an icon as well as color.
-- Keep one primary action for the current flow. Preserve concrete costs, predicted consequences, source time, and failure recovery near the controls they explain.
-- Keep fixture information visibly labelled practice. An unavailable live source must pause play; a fixture must never silently replace it.
-- Reuse native controls and disclosures. Preserve Tab/Enter/Space behavior and the focus perimeter. Check 320 and 390px before adding fixed dimensions.
-- Let the LED illustration carry the atmosphere. Additional glows, gradients, card stacks, fonts, or dashboard chrome would compete with this system.
+- Extend a hollow in `src/game.ts` with a named encounter, explicit damage and three concrete responses. Compute preview and result through the same rule; never hand-copy an expected outcome into the UI.
+- Reuse the encounter panel, room variables, six text sizes and original LED habitat. Keep the action beside the threat and the exact effects beside the action.
+- Keep fresh hardware, idle, unavailable/stale, and practice states visibly distinct. Do not animate a practice or unknown wheel, generate random “live” power, or imply blueprints are tokens.
+- Preserve the deliberate next-encounter beat and explicit loss warning. Do not restore the old allocation steppers or make the habitat secondary to a resource form.
+- Keep local progress labelled local. Use the existing public read-only API; adding wallets, transactions or a shared leaderboard would be new scope.
+- For another page, start inside `.app-shell`, reuse the header and native disclosures, add a deliberate hash destination if necessary, and repeat the phone-first action/overflow check. Use `DESIGN.md` as implementation documentation, not as evidence that a new feature has been tested.
 
-Design/review guidance: Jakub Krehel’s Better Interface (MIT). Documentation structure adapted from Paul Bakaus’s Impeccable (Apache-2.0). Attribution and licenses are retained in `licenses/Design-guidance.txt`; this product’s code/art were implemented independently for this assignment.
+Guidance: Jakub Krehel’s Better Interface (MIT); documentation method adapted from Paul Bakaus’s Impeccable (Apache-2.0). Retained attribution and licenses: `licenses/Design-guidance.txt`.

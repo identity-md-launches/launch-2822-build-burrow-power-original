@@ -10,11 +10,11 @@ import {
   wheelPower,
 } from "../src/api";
 const captured = JSON.parse(
-  readFileSync("artifacts/api-observations.json", "utf8"),
+  readFileSync("artifacts/redesign-api-observations.json", "utf8"),
 );
-const now = Date.parse(captured.status.generatedAt);
-const status = () => structuredClone(captured.status);
-const events = () => structuredClone(captured.events);
+const now = Date.parse(captured.checkedAt);
+const status = () => structuredClone(captured.status.body);
+const events = () => structuredClone(captured.events.body);
 const rejects = (fn: () => unknown, kind: string) =>
   assert.throws(fn, (e) => e instanceof DataError && e.kind === kind);
 test("captured live hardware schema is supported and idle generates exactly zero", () => {

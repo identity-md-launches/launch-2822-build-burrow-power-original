@@ -1,12 +1,30 @@
 {
-  "label": "Bundled practice scenario · not live chain data",
-  "source": "Power magnitudes calibrated to the official 7-day peak (111256 rpmMilli) and captured hardware passages. The turn order and activity states are a designed practice scenario.",
+  "label": "Designed practice sequence \u00b7 not live chain data",
+  "source": "Authored game scenario. Activity states and rates are fixtures, not current hardware readings. Practice never animates the wheel.",
   "turns": [
-    { "coreStatus": "ACTIVE", "rpmMilli": 95000 },
-    { "coreStatus": "ACTIVE", "rpmMilli": 77005 },
-    { "coreStatus": "IDLE", "rpmMilli": 0 },
-    { "coreStatus": "ACTIVE", "rpmMilli": 50000 },
-    { "coreStatus": "IDLE", "rpmMilli": 0 },
-    { "coreStatus": "ACTIVE", "rpmMilli": 111256 }
+    {
+      "coreStatus": "IDLE",
+      "rpmMilli": 0
+    },
+    {
+      "coreStatus": "ACTIVE",
+      "rpmMilli": 25000
+    },
+    {
+      "coreStatus": "IDLE",
+      "rpmMilli": 0
+    },
+    {
+      "coreStatus": "IDLE",
+      "rpmMilli": 0
+    },
+    {
+      "coreStatus": "ACTIVE",
+      "rpmMilli": 25000
+    },
+    {
+      "coreStatus": "IDLE",
+      "rpmMilli": 0
+    }
   ]
 }

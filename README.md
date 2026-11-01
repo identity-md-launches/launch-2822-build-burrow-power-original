@@ -1,134 +1,108 @@
 # Burrow Power
 
-A single-player strategy game for the Squeekchain community. Keep a hamster’s nest, garden, and tunnels alive through six turns. Fresh hardware wheel activity changes the power you can spend. Confirmed round settlements unlock upgrades.
+**Small paws. Big night.** Protect Pip’s underground home through six illustrated encounters. Each threat gives you three responses: spend power on protection, improvise at another room’s expense, or accept damage to bank power. See the room changes immediately, then decide when to face the next encounter.
 
-**Points and blueprints are local game items, not SQK.** No wallet, contract, token, backend, entry fee, or financial reward is involved. The game and dot artwork are original to this project.
+The redesigned game, original LED habitat artwork, source, existing dependency lockfile, and complete static export are included. Points, power and blueprints are **local game progress**, not SQK, tokens, or financial rewards. No wallet, onchain score, signing, contract change or deployment is implemented.
 
-## Run, preview, and rebuild
+## Install, preview and rebuild
 
-Use Node.js 24 and npm. The checked-in `dist/` is a complete production export; it does not need rebuilding to be hosted.
+Use Node.js 24 and npm:
 
 ```sh
 npm ci
 npm run dev
+```
+
+To check and reproduce the production export:
+
+```sh
 npm run typecheck
 npm test
 npm run build
 npm run preview
 ```
 
-Vite prints the preview address. Serve `dist/` using any static HTTP host. The build sets `base: './'`; scripts, CSS, fonts, favicon, and share image use relative paths. Navigation uses hashes (`#burrow`, `#play`, `#how-to-play`), so gateway subpaths need no server rewrites. Use HTTP rather than opening `index.html` as a `file:` URL.
+Serve `dist/` over HTTP; do not open it with `file:`. The existing Vite toolchain sets `base: './'`. The export includes relative JavaScript, CSS, font, favicon and social-card URLs. `#burrow` and `#play` need no server rewrites. The interaction suite serves it under `/preview/` to test a gateway subpath.
 
-For browser validation:
+This assignment retained `package.json`, `package-lock.json`, `tsconfig.json` and the existing build toolchain configuration. To respect the restriction on repository dependency directories, the worker installed the declared tools outside the repository and used the existing `BURROW_TOOLCHAIN` option. No dependency tree, package cache, browser binary or vendored registry is included.
+
+## Play the night
+
+1. Choose **Practice** or **Real wheel**, then **Protect the burrow**. Practice is the default so a first game does not depend on a network request. An unfinished shift resumes.
+2. Start with **9 power** and **64/100 in each room**. Each encounter credits its wheel/practice power once. Capacity is 16; unspent power carries over.
+3. Read the threat and choose one response. Protection costs 2 power. An improvised response costs 1 and harms another room. Salvaging costs 0, accepts the threat’s damage and adds up to 2 power, subject to bank space. The numbers shown are the **exact net condition changes**, including damage, care and the 0–100 cap. Hover or focus previews the resulting room conditions.
+4. The outcome shows the chosen response, before/after conditions and remaining power. **Next encounter** advances only when you choose it.
+5. Keep every room above **0** through encounter **6** to win. Any room at 0 ends the shift. Winning unlocks the next hollow. Restart asks for confirmation and preserves long-term progress.
+
+| Hollow             | Challenge                                                               |
+| ------------------ | ----------------------------------------------------------------------- |
+| The first burrow   | Cold, thirst, falling stones, moths, flooding and one last tremor.      |
+| The flooded hollow | Six different flood encounters; a garden below 40 adds 5 tunnel damage. |
+| The faultline      | Six aftershock encounters; tunnels below 40 add 4 damage to every room. |
+
+Each level has six authored encounters. Baseline encounter damage is 27 to the threatened room and 6 to the others, plus 2 per deeper level. Protection supplies 38 care to the target. Improvisation supplies 29 care to the target and costs 8 condition in the next room in the nest → garden → tunnels cycle. Salvaging supplies no care. Installed upgrades reduce their own room’s damage by 3.
+
+All three hollows can be completed with an entirely idle wheel and no upgrades. Continual neglect loses the first hollow on encounter 4. Practice’s designed gains are `[0, 1, 0, 0, 1, 0]`; a simple “take the first affordable response” strategy wins all three levels. First-level reserve-only playthroughs and harder-level solutions are verified by the game tests.
+
+Score: `100 × completed encounters + 2 × remaining room conditions + 25 × remaining power + 100 × level + 500 for a win`. Best score, wins, unlocks and upgrades are separate for practice and real wheel play.
+
+## How Squeekchain changes play
+
+The app retains the official public, credential-free API integration in `src/api.ts`, checked against the [official API reference](https://docs.squeekchain.com/developers/api/).
+
+| Read                                                                | What the game uses                                                                                             |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `https://api.squeekchain.com/v1/status`                             | Status schema 1, accepted oracle, hardware provenance, observation/receipt freshness and activity/RPM.         |
+| `https://api.squeekchain.com/v1/events?category=protocol&limit=100` | Event schema 3 and catalog `public-activity-v4`; safe Sepolia `system.settlement_completed` events, version 2. |
+
+A fresh hardware reading with `coreStatus: ACTIVE` generates `min(4, ceil(rpmMilli / 25000))` local power at the start of an encounter. `rpmMilli` is thousandths of RPM. Idle, zero-rate and faulted data never generate active power. This is a game balancing rule, not the protocol’s work or SQK issuance calculation. The same still-fresh reading may inform several quick turns; the game does not claim to meter cumulative physical work.
+
+Both wheel timestamps must be no more than 120 seconds old. The confirmed feed’s safe block timestamp must be no more than 10 minutes old. Unsupported versions, malformed consumed fields, simulated/replay/derived provenance, unavailable feeds and failed requests pause real wheel play without spending an encounter or power. Polling is every 15 seconds while visible, with a one-second freshness check and another check immediately before an action. HTTP 429/503 `Retry-After` is respected. No practice fallback is substituted into real wheel play.
+
+The hamster and wheel animate only for fresh, accepted **real hardware activity in Real wheel mode**. They rest for idle readings. Stale/unavailable/unsupported data have explicit labels. Practice uses the labelled fixture in `src/data/practice.json`, keeps separate saves and always leaves the wheel still. Reduced-motion preferences and the visible motion control stop wheel animation.
+
+New safe settlements unlock local blueprints. The first sync credits only the most recent eligible event; persisted deployment-scoped block/log watermarks deduplicate refreshes and subsequent pages. Each upgrade costs 1 blueprint and installs between shifts. Practice starts with 1 blueprint and awards 1 per win; practice never creates real-wheel blueprints. Storage denial permits session-only practice and disables real-wheel unlock tracking.
+
+The official endpoint currently serves a different core identity from the documentation’s published deployment record. The game preserves its existing API-scoped identity checks and does not claim independent RPC verification. See [API research and limitations](artifacts/api-research.md). No contract identity or transaction flow was guessed.
+
+## Saving and controls
+
+Progress saves locally under `burrow-power:save:v2`. Valid allocation-era v1 profiles and settlement watermarks migrate; old active allocation turns are left in their original key because their rules differ. New encounter runs, including the outcome phase, resume without crediting power twice. Clear browser storage to clear local progress. Another tab’s save updates are observed.
+
+All actions work with **Tab, Enter and Space**. Help and restart use native modal dialogs; Escape closes them and focus returns to the trigger. Response focus provides the same preview as hover. Results announce through a polite live region. Color is supported by names, numbers, condition text and hazard shapes. There are no timers requiring fast reactions.
+
+## Validation
+
+Run browser checks after a production build:
 
 ```sh
 npx playwright install chromium webkit
 npm run test:browser
 node scripts/live-check.mjs
-node scripts/keyboard-check.mjs
+node scripts/check-export.mjs
 ```
 
-On Linux, Playwright may also need its documented native browser dependencies. `test:browser` reports a missing browser as unperformed, not passed. The live check is separate: it uses the actual public API without interception and requires fresh, healthy data. It will fail when the service is stale or unavailable; the game's practice mode remains usable.
+Browser binaries/native dependencies must be available. `scripts/keyboard-check.mjs` is a historical entry point into the interaction suite. To regenerate the included social card from the production artwork, run `node scripts/create-share.mjs`, then rebuild.
 
-The worker used the optional `BURROW_TOOLCHAIN` path supported by `scripts/toolchain.mjs` to install dependencies outside the repository. Normal `npm ci` needs no special variable. No dependency tree, package cache, browser binary, or registry archive is part of this delivery.
+Actual worker results:
 
-## Play a shift
+- Production build and TypeScript check passed; **30 unit/API/storage tests passed**.
+- Chromium at 1440px and 390px completed all **18 encounters across three hollows**. Keyboard-only play completed a six-encounter game.
+- Unmodified official API games at both widths won all six encounters using actual idle readings: **0 new wheel power**; safe settlement unlocks were observed. Active-animation/power cases were tested with explicitly intercepted fixtures, not claimed as observed live activity.
+- Primary flows include save/resume, an earlier-hollow resume after later unlocks, loss/retry, confirmation, upgrades, mode separation, blocked storage, stale time passage, non-hardware rejection and rate limiting.
+- Automated accessibility checks found **0 violations** on home, encounter and result. Responsive/reduced-motion checks cover 320, 390, 768 and 1440px. The pinned design probe passed **16/16**; the start action and first response fit the 390×844 screen.
+- **WebKit/Safari could not be run** because the native browser runtime was unavailable. Physical devices, manual screen-reader use, real browser zoom, alternate locales and prolonged soak testing were not performed.
 
-1. **Start shift** uses live wheel data. **Play practice** uses a labelled bundled fixture and separate progress. If a shift is unfinished, its start action resumes it.
-2. Start with **9 reserve power**, **58 warmth**, **56 garden health**, and **62 tunnel stability**. Maximum power is 12; conditions range from 0 to 100.
-3. Each turn credits 0–4 wheel power once. Read the forecast, then allocate up to **3 power**, at most **2 per room**. Unspent power carries over. Spending nothing is allowed.
-4. Each power unit gives **+18 warmth**, **+16 garden health**, or **+17 tunnel stability**. Care applies first, capped at 100; forecast losses apply next. The meters preview the exact result before committing.
-5. Keep every condition **above zero** through turn six. Any zero ends the shift immediately. Outcomes, score, and the turn log explain what happened.
+Detailed results, source findings and six-domain review coverage are in [artifacts/validation.md](artifacts/validation.md), [browser-validation.json](artifacts/browser-validation.json), [live-validation.json](artifacts/live-validation.json) and [DESIGN.md](DESIGN.md). Screenshots are included under `artifacts/screenshots/`. These are worker observations, not an independent certification.
 
-Level 1 loses 10 warmth, 9 health, and 8 stability per turn before weather. Level 2 adds 2 to each loss; level 3 adds 4. Weather adds 5 to warmth, garden, and tunnels on turns 1–3 respectively, then 6 to those same rooms on turns 4–6.
+## Repository and publication status
 
-Starting a turn below 30 condition causes linked penalties: a dry garden adds 3 warmth loss; a cold nest adds 3 stability loss; weak tunnels add 3 garden health loss. These appear in the forecast. The same choices can have different consequences when the burrow is already struggling.
+Repository: https://github.com/identity-md-launches/launch-2822-build-burrow-power-original/
 
-Winning unlocks the next level, up to level 3. Between shifts, spend one blueprint on each upgrade: **Moss lining** at level 1 reduces warmth loss by 2; **Rain cistern** at level 2 reduces garden loss by 2; **Root braces** at level 3 reduces tunnel loss by 2. Installed upgrades are fixed for a shift. Choose the next level in the workshop.
+Requested hosting name: `burrow-power-a-hamster-powered-s.identitymd.eth`.
 
-Score is `100 × completed turns + 2 × sum of final conditions + 25 × remaining power + 100 × level`, plus **500** for a win. The completed-turn term includes the final failed turn. Best scores and progression are separate for live and practice.
+**New PR URL: unavailable. New deployed-site URL: unavailable.** No authenticated GitHub or IMD publishing connector was provided, and the GitHub browser displayed Sign in. The assignment also prohibits touching `.git/` and using IMD CLI commands. Source and `dist/` are delivered in the workspace; no new remote commit, PR or hosted version is claimed. [artifacts/PULL_REQUEST.md](artifacts/PULL_REQUEST.md) contains the prepared review description; [artifacts/publication.json](artifacts/publication.json) records `null` for the missing remote results.
 
-## Real Squeekchain connection
+An authenticated repository/publishing runner can submit these source files and the complete `dist/` to the existing repository, open a PR against `main`, and publish that export under the existing hosting name. No rebuilding service or private backend is required by the export. Nothing was fabricated to fill the publication or browser-verification gaps.
 
-Verified against the [official API reference](https://docs.squeekchain.com/developers/api/) and its [status schema](https://docs.squeekchain.com/assets/api/status.json) and [events schema](https://docs.squeekchain.com/assets/api/events.json) on **2026-11-01**. Captured public measurements and provenance are preserved in [artifacts/api-observations.json](artifacts/api-observations.json). See [artifacts/api-research.md](artifacts/api-research.md) for the deployment-table discrepancy and calibration details.
-
-| Public endpoint | Fields used | Purpose |
-| --- | --- | --- |
-| `https://api.squeekchain.com/v1/status` | `schemaVersion: 1`, `installationId`, `revision`, `generatedAt`, `oracle.state`; `measurement.freshness`, `observedAt`, `receivedAt`, `staleAfterSeconds`, `counterEpoch`, `cumulativeWorkUnits`, `provenance`, `coreStatus`, `rpmMilli`, `speedMmPerSecond`, `distanceMm` | Validate the wheel source; derive each turn’s power from its activity state and RPM. |
-| `https://api.squeekchain.com/v1/events?category=protocol&limit=100` | `schemaVersion: 3`, `catalogVersion: public-activity-v4`, `status`, `reason`, `installationId`, `release.id`, `identities.core`, `chain.chainId`, `target`, `confirmations`, `safeThroughBlock`, `safeBlockTimestamp`, `events`, `nextCursor` | Obtain confirmed round events and catch up newer events after absence. |
-| Settlement entries | `type: system.settlement_completed`, `eventVersion: 2`, stable `id`, `occurredAt`; `source.kind`, `chainId`, `releaseId`, `contractAddress`, `blockNumber`, `logIndex`, `transactionHash`, `confirmationStatus: safe`; `payload.previousSettledThroughRound`, `settledThroughRound` | Credit one blueprint per newly observed confirmed settlement. |
-
-These are public, credential-free browser GET requests. Live mode currently observes **Sepolia, chain 11155111**, as served by the official API; it makes no transaction or RPC call. It validates the supported fields used by the game, ignores unused extra fields, and rejects unsupported versions or malformed consumed fields. It is not a general-purpose implementation of every field in the published schemas.
-
-### Exact wheel conversion
-
-For a fresh, accepted **hardware** measurement:
-
-```text
-if coreStatus != ACTIVE or rpmMilli == 0:
-    newPower = 0
-else:
-    newPower = min(4, ceil(rpmMilli / 25000))
-
-creditedPower = min(12, previousPower + newPower) - previousPower
-```
-
-`rpmMilli` is thousandths of RPM. The game awards one power per started 25 RPM band, capped at four. This is a game balancing rule, not Squeekchain’s work, SQK, or protocol power calculation. It samples the latest rate once per **game turn**; turns are not 600-second chain rounds. The same still-fresh observation can legitimately inform several fast game turns. This does not claim to conserve or issue physical work.
-
-| Reading | Result |
-| --- | --- |
-| IDLE, even with a retained nonzero speed | 0 new power |
-| ACTIVE at 25 RPM | 1 |
-| ACTIVE at 50 RPM | 2 |
-| ACTIVE at 77.005 RPM | 4 |
-| Recorded hardware peak 111.256 RPM | 4 |
-
-The API’s actual idle reading was 0 RPM. Its actual seven-day peak was 111,256 `rpmMilli`; captured hardware passage gaps were about 0.54–0.64 seconds in the first recorded segment. These observations informed the 25-RPM bands, four-power cap, 12-power capacity, and nine-power starting reserve. The test solver verified all three levels at the recorded active magnitude and level 1 with entirely idle input. A real unmodified-API six-turn idle game also won using only the reserve. No live active session was observed during validation; active and outage interaction scenarios used explicitly controlled test responses.
-
-### Freshness and recovery
-
-- The API declares measurement stale after 120 seconds since receipt. The game also checks observation age against 120 seconds, requires `freshness: online`, `provenance: hardware`, an accepted oracle, and a healthy counter. Dates over 15 seconds in the future pause live play to avoid a misleading clock.
-- The game adds a **10-minute safe-block-time guard** for the confirmed event feed. This is a game policy, not an API-published expiry. It uses `chain.safeBlockTimestamp`, not `generatedAt`, to detect a frozen confirmation frontier.
-- A 15-second poll refreshes visible pages; a one-second age guard and a pre-action check stop an expired reading from being used. Crediting a turn is idempotent and persisted: reload, source refresh, or reopening a shift does not refill it.
-- HTTP errors, invalid JSON, HTTP-200 `unavailable` responses, unsupported schemas, stale data, or loss of persistent storage pause live runs. The reason and **Retry** control are visible. No turn is spent by a failed fetch. Requests time out after 8 seconds and honor `Retry-After`; there is no automatic fixture substitution.
-- Practice has its own explicit mode banner and bundled scenario in `src/data/practice.json`. Its timing/order/activity states are designed fixtures; real measured magnitudes calibrate them. It starts with one practice blueprint. It never presents those values or credits as live.
-
-### Confirmed rounds, exactly once
-
-A safe `system.settlement_completed` event is a settled round range, including ranges with zero work. A mining checkpoint, optimistic block projection, measurement milestone, or oracle closure is not this event and earns no blueprint.
-
-The first successful sync bootstraps from **only the latest safe settlement**, rather than awarding the deployment’s entire historical archive. Afterwards, new safe settlements each earn one blueprint. The app sorts them by BigInt `(blockNumber, logIndex)`, checks source chain/release/core identity against the envelope, and requires their block to be at or below `safeThroughBlock` with 12 confirmations. It saves the last position, stable event ID, and round in the same local-storage value as blueprint inventory. Duplicate entries, polls, refreshes, and game restarts cannot replay older positions.
-
-Catch-up follows up to 10 additional cursor pages of 100 protocol events to reach the saved position; an excessive gap pauses rather than silently dropping events. The frontier is scoped by installation, chain, and core address. Clearing or corrupting browser storage starts a new local profile and therefore a new bootstrap; this is not a global account or an anti-cheat system.
-
-## Saves and controls
-
-Mouse, keyboard (Tab, Enter, Space), and mobile touch all work. Native buttons, labelled steppers, condition meters, visible focus, and persistent turn feedback support the main flow. No timed gestures are required. Motion is limited to optional short press feedback and honors reduced motion.
-
-One versioned local-storage record (`burrow-power:save:v1`) stores both profiles, resumable turns, installed upgrades, event positions, scores, and last-used mode. Validation rejects corrupt or unsupported saves and explains recovery. Unavailable storage keeps practice playable in memory and pauses live mode, because durable event deduplication would otherwise be impossible. In-memory progress is lost on refresh. Storage changes from other tabs are observed; use one active tab to avoid simultaneous-write conflicts.
-
-## Validation actually run
-
-All results are worker observations, not independent certification. The final report and evidence are in [artifacts/validation.md](artifacts/validation.md).
-
-| Check | Actual result |
-| --- | --- |
-| Production `npm run build` | Passed; complete relative-URL export in `dist/`. |
-| `npm run typecheck` | Passed. |
-| `npm test` | 29 tests passed. |
-| `npm run test:browser` | 29 scenarios passed; recorded in `artifacts/browser-results.json`. Includes desktop six-turn active scenarios, mobile six-turn idle game, six-turn practice, and WebKit practice. |
-| `node scripts/live-check.mjs` | Passed against the real API without interception: six idle turns, zero wheel power, real confirmed round 860, one blueprint. |
-| `node scripts/keyboard-check.mjs` | Passed: all six practice turns with Tab/Enter only while API requests were aborted. |
-| Pinned `taste.mjs --out test/scratch/taste` | 16 of 16 checks passed at 320, 390, and 1440. |
-
-The browser scenarios include fresh active input, idle input, stale observations, outages, HTTP 503, malformed/unsupported status and event data, non-hardware provenance, unavailable event feeds, duplicate/new safe events, reload, restart, corruption, blocked storage, controls, failure/success, upgrades, routing, reduced motion, local font loading, and overflow. Axe checks on rules and Play found no serious/critical violations. Reflow was checked at 320, 390, 720, 940, and 1440 CSS pixels. Browser mobile emulation is not a physical-device test; neither native screen-reader sessions nor browser-native 200% zoom were run.
-
-## Delivery and limitations
-
-- Full source, lockfile, runtime assets, tests, design documentation, and production `dist/` are included. `DESIGN.md` describes the implemented design system.
-- The game needs the public API for live runs, but no backend of its own. It does not keep a service-worker offline cache; after loading, practice does not depend on live measurements. An offline static server can serve the bundled practice game.
-- The official API is under active development. A new schema/catalog version, non-hardware deployment, or changed freshness rules can require a client update. The live endpoint’s self-described current deployment differs from the older published deployment table; the game validates internally consistent API event identities and never prepares transactions. Details are in the research record.
-- Browser-local progress is not portable across devices, profiles, origins, or cleared storage. No global leaderboard or shared persistence is implied.
-- **Public GitHub publication was not performed by this worker.** No GitHub publishing connector or `gh` executable was available, and no repository URL is invented. The static export and source are ready for the assignment’s submission/publishing plane. No Git metadata, GitHub configuration, or account credentials were accessed or modified.
-
-Manrope is bundled under its [SIL Open Font License](public/licenses/Manrope-OFL.txt). React’s [MIT notice](public/licenses/React-MIT.txt) is retained with the export. The pinned Better Interface guidance is by Jakub Krehel (MIT); its documentation method is adapted from Paul Bakaus’s Impeccable (Apache-2.0). Their notices are retained in `licenses/Design-guidance.txt`.
+Design guidance attribution and licenses remain in `licenses/Design-guidance.txt`; font and React notices are included with the public assets.
