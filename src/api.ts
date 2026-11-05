@@ -47,9 +47,10 @@ export interface EventPage {
   safeThroughBlock: string;
   safeBlockTimestamp: string;
 }
-export interface LiveSnapshot {
+export interface WheelSnapshot {
   status: WheelStatus;
-  page: EventPage;
+  settledRound: string | null;
+  roundError: string | null;
   checkedAt: string;
 }
 export type Watermarks = Record<
@@ -81,7 +82,7 @@ const address = (x: unknown): x is string =>
 function bad(message: string): never {
   throw new DataError(
     "schema",
-    `Unsupported API data: ${message}. Live shifts are paused.`,
+    `Unsupported API data: ${message}.`,
   );
 }
 export function validateStatus(raw: unknown, now = Date.now()): WheelStatus {
@@ -169,13 +170,31 @@ export function wheelPower(
     ? Math.min(4, Math.ceil(m.rpmMilli / 25000))
     : 0;
 }
+// The builder's settled frontier is display data, never an unlock or a watermark.
+// Validate it separately so unavailable builder data cannot hide a valid wheel.
+export function validateStatusRound(raw: unknown): string | null {
+  if (!object(raw) || raw.schemaVersion !== 1)
+    bad("expected status schema version 1");
+  if (!object(raw.builder)) bad("missing status builder");
+  if (raw.builder.status === "unavailable") return null;
+  const anchor = raw.builder.anchor;
+  if (
+    raw.builder.status !== "available" ||
+    !object(anchor) ||
+    !uint(anchor.settledThroughRound) ||
+    BigInt(anchor.settledThroughRound) > 18446744073709551615n ||
+    (anchor.confirmedAt !== null && !timestamp(anchor.confirmedAt)) ||
+    (anchor.transactionHash !== null && !hash(anchor.transactionHash))
+  ) bad("invalid settled round in status builder");
+  return anchor.settledThroughRound;
+}
 export function validateEvents(raw: unknown, now = Date.now()): EventPage {
   if (!object(raw) || raw.schemaVersion !== 3)
-    bad("expected event schema version 3");
+    bad(`event schema version ${object(raw) && integer(raw.schemaVersion) ? raw.schemaVersion : "unknown"}; expected 3 (the published schema)`);
   if (raw.status === "unavailable")
     throw new DataError(
       "unavailable",
-      `Round feed unavailable (${str(raw.reason) ? raw.reason : "unknown reason"}). Live shifts are paused.`,
+      `Round feed unavailable (${str(raw.reason) ? raw.reason : "unknown reason"}).`,
     );
   if (
     raw.status !== "available" ||
@@ -206,7 +225,7 @@ export function validateEvents(raw: unknown, now = Date.now()): EventPage {
   )
     throw new DataError(
       "stale",
-      "The confirmed round feed is more than 10 minutes behind the clock. Your live shift is paused.",
+      "The settlement feed safe block is older than 10 minutes or ahead of this device’s clock.",
     );
   const events: Settlement[] = [];
   for (const event of raw.events) {
@@ -266,7 +285,18 @@ export const position = (event: Settlement) => ({
   block: event.source.blockNumber,
   log: event.source.logIndex,
 });
+function assertWatermarkCovered(page: EventPage, watermarks: Watermarks) {
+  const previous = watermarks[page.scope];
+  if (!previous) return;
+  if (BigInt(page.safeThroughBlock) < BigInt(previous.block))
+    throw new DataError("stale", "Settlement feed is behind the saved watermark. Waiting for it to catch up.");
+  if (!page.events.some((e) => compareEvent(position(e), previous) === 0 &&
+    e.id === previous.eventId && e.payload.settledThroughRound === previous.round))
+    throw new DataError("unavailable", "The feed does not include the saved settlement watermark. Unlocks will resume when complete history can be verified.");
+}
 export function consumeEvents(page: EventPage, watermarks: Watermarks) {
+  // Recheck the current save too: another tab may update it during pagination.
+  assertWatermarkCovered(page, watermarks);
   const sorted = [...page.events].sort((a, b) =>
     compareEvent(position(a), position(b)),
   );
@@ -280,6 +310,8 @@ export function consumeEvents(page: EventPage, watermarks: Watermarks) {
   let last: Settlement | undefined;
   for (const e of candidates) {
     if (watermark && compareEvent(position(e), watermark) <= 0) continue;
+    if (watermark && BigInt(e.payload.previousSettledThroughRound) !== BigInt(watermark.round))
+      throw new DataError("unavailable", "Settlement history has a gap or an inconsistent round range after the saved watermark. New unlocks remain paused; retry for complete history.");
     watermark = {
       ...position(e),
       eventId: e.id,
@@ -296,8 +328,11 @@ export function consumeEvents(page: EventPage, watermarks: Watermarks) {
       : watermarks,
   };
 }
-let retryAt = 0;
+// A busy event indexer must not prevent the independent wheel request.
+const retries = new Map<string, number>();
 async function request(path: string, signal?: AbortSignal): Promise<unknown> {
+  const channel = path.startsWith(STATUS_PATH) ? STATUS_PATH : EVENTS_PATH;
+  const retryAt = retries.get(channel) ?? 0;
   if (Date.now() < retryAt)
     throw new DataError(
       "rate",
@@ -324,7 +359,7 @@ async function request(path: string, signal?: AbortSignal): Promise<unknown> {
             : header
               ? Math.max(1, (Date.parse(header) - Date.now()) / 1000)
               : 10;
-        retryAt =
+        const nextRetry =
           Date.now() +
           Math.max(
             1000,
@@ -333,10 +368,11 @@ async function request(path: string, signal?: AbortSignal): Promise<unknown> {
               Number.isFinite(seconds) ? seconds * 1000 : 10000,
             ),
           );
+        retries.set(channel, nextRetry);
         throw new DataError(
           "rate",
-          `The API is busy (HTTP ${response.status}). Retry after ${new Date(retryAt).toLocaleTimeString()}.`,
-          retryAt - Date.now(),
+          `The API is busy (HTTP ${response.status}). Retry after ${new Date(nextRetry).toLocaleTimeString()}.`,
+          nextRetry - Date.now(),
         );
       }
       throw new DataError(
@@ -360,22 +396,32 @@ async function request(path: string, signal?: AbortSignal): Promise<unknown> {
     signal?.removeEventListener("abort", abort);
   }
 }
-export async function fetchLive(
+export async function fetchWheel(signal?: AbortSignal): Promise<WheelSnapshot> {
+  const raw = await request(STATUS_PATH, signal);
+  const status = validateStatus(raw);
+  let settledRound: string | null = null;
+  let roundError: string | null = null;
+  try {
+    settledRound = validateStatusRound(raw);
+  } catch (error) {
+    roundError = error instanceof Error ? error.message : "Settled round unavailable.";
+  }
+  return { status, settledRound, roundError, checkedAt: new Date().toISOString() };
+}
+export async function fetchSettlements(
   watermarks: Watermarks,
+  installationId: string,
   signal?: AbortSignal,
-): Promise<LiveSnapshot> {
-  const [statusRaw, eventsRaw] = await Promise.all([
-    request(STATUS_PATH, signal),
-    request(EVENTS_PATH, signal),
-  ]);
-  const now = Date.now(),
-    status = validateStatus(statusRaw, now),
-    page = validateEvents(eventsRaw, now);
-  if (page.installationId !== status.installationId)
+): Promise<EventPage> {
+  const page = validateEvents(await request(EVENTS_PATH, signal));
+  if (page.installationId !== installationId)
     bad("wheel and event feed installations differ");
   const watermark = watermarks[page.scope];
+  if (watermark && BigInt(page.safeThroughBlock) < BigInt(watermark.block))
+    throw new DataError("stale", "Settlement feed is behind the saved watermark. Waiting for it to catch up.");
   let cursor = page.nextCursor;
   let count = 0;
+  const cursors = new Set<string>();
   // Catch up new events while retaining the safe frontier of the first page.
   while (
     watermark &&
@@ -388,14 +434,16 @@ export async function fetchLive(
         "unavailable",
         "Too much round history to catch up safely in one request. Practice remains available.",
       );
+    if (cursors.has(cursor)) bad("settlement pagination repeated a cursor");
+    cursors.add(cursor);
     const next = validateEvents(
       await request(
         EVENTS_PATH + "&cursor=" + encodeURIComponent(cursor),
         signal,
       ),
     );
-    if (next.scope !== page.scope)
-      bad("deployment changed while reading round history");
+    if (next.scope !== page.scope || next.safeThroughBlock !== page.safeThroughBlock || next.safeBlockTimestamp !== page.safeBlockTimestamp)
+      bad("deployment or safe frontier changed while reading round history; retry from the saved watermark");
     page.events.push(
       ...next.events.filter(
         (e) => BigInt(e.source.blockNumber) <= BigInt(page.safeThroughBlock),
@@ -403,6 +451,7 @@ export async function fetchLive(
     );
     cursor = next.nextCursor;
   }
-  assertFresh(status.measurement);
-  return { status, page, checkedAt: new Date().toISOString() };
+  // Do not advance past a gap, even when the server says there are no more pages.
+  assertWatermarkCovered(page, watermarks);
+  return page;
 }

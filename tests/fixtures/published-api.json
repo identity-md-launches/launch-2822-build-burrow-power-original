@@ -1,0 +1,237 @@
+{
+  "source": "Official docs examples, protocol-only event fixture; NOT a live response. Timestamps rebased only in browser tests.",
+  "status": {
+    "body": {
+      "schemaVersion": 1,
+      "installationId": "stream-game-sepolia-test-20261025-01",
+      "revision": "U9zQYSMMEt_vtiMrL2LQN7URAlabSL1EfDbQMX9N5XI",
+      "generatedAt": "2026-10-28T23:39:11.638Z",
+      "measurement": {
+        "freshness": "online",
+        "observedAt": "2026-10-28T23:39:11.037Z",
+        "receivedAt": "2026-10-28T23:39:11.371Z",
+        "staleAfterSeconds": 120,
+        "counterEpoch": "c011f01a-93ba-45ff-8579-619ddfdf40ec",
+        "cumulativeWorkUnits": "26009",
+        "provenance": "hardware",
+        "coreStatus": "IDLE",
+        "rpmMilli": 77005,
+        "speedMmPerSecond": 1127,
+        "distanceMm": 3455808
+      },
+      "builder": {
+        "status": "available",
+        "anchor": {
+          "cumulativeWork": "25701",
+          "cumulativeBlockUnits": "2366143705150",
+          "blockHeight": "2366",
+          "blockProgress": "143705150",
+          "workPerThousandBlocks": "11005",
+          "settledThroughRound": "346",
+          "confirmedAt": "2026-10-28T23:30:36.000Z",
+          "transactionHash": "0x1656b585be00b72032006a93e0ba0a1050e343f17e5f6cd5bc42e7aaf30c9b59"
+        },
+        "queued": {
+          "closedRoundCount": "0",
+          "closedWorkUnits": "0",
+          "openRoundWorkUnits": "308"
+        },
+        "projected": {
+          "cumulativeWork": "26009",
+          "cumulativeBlockUnits": "2394130983659",
+          "blockHeight": "2394",
+          "blockProgress": "130983659",
+          "workPerThousandBlocks": "10894",
+          "firstCompletedBlock": "2367",
+          "lastCompletedBlock": "2394",
+          "completedBlockCount": "28",
+          "lifecycle": "optimistic"
+        }
+      },
+      "oracle": {
+        "state": "accepted",
+        "reason": null,
+        "latestAcceptedAt": "2026-10-28T23:39:11.371Z",
+        "latestClosure": {
+          "firstRound": "346",
+          "lastRound": "346",
+          "roundCount": "1",
+          "acceptedAt": "2026-10-28T23:30:01.352Z"
+        }
+      },
+      "settlementQueue": {
+        "status": "available",
+        "state": "empty",
+        "settlementEnabled": true,
+        "reporterEnvironmentEnabled": true,
+        "buffered": {
+          "firstRound": null,
+          "lastRound": null,
+          "roundCount": "0",
+          "activeRoundCount": "0",
+          "workUnits": "0"
+        },
+        "projected": {
+          "cumulativeWork": "25701",
+          "cumulativeBlockUnits": "2366143705150",
+          "blockHeight": "2366",
+          "blockProgress": "143705150",
+          "workPerThousandBlocks": "11005",
+          "firstCompletedBlock": null,
+          "lastCompletedBlock": null,
+          "completedBlockCount": "0",
+          "lifecycle": "optimistic"
+        },
+        "incidentOpen": false,
+        "blockedReason": null,
+        "lastRun": {
+          "startedAt": "2026-10-28T23:35:27.357Z",
+          "finishedAt": "2026-10-28T23:35:29.617Z",
+          "result": "reconciled"
+        },
+        "latestSubmission": {
+          "submissionId": "5c274c6d-b953-450b-9809-4521e5e47255",
+          "lifecycle": "confirmed",
+          "previousSettledThroughRound": "345",
+          "settledThroughRound": "346",
+          "roundCount": "1",
+          "activeRoundCount": "1",
+          "expected": {
+            "cumulativeWork": "25701",
+            "cumulativeBlockUnits": "2366143705150",
+            "blockHeight": "2366",
+            "blockProgress": "143705150",
+            "workPerThousandBlocks": "11005",
+            "firstCompletedBlock": "2311",
+            "lastCompletedBlock": "2366",
+            "completedBlockCount": "56"
+          },
+          "transactionHash": "0x1656b585be00b72032006a93e0ba0a1050e343f17e5f6cd5bc42e7aaf30c9b59",
+          "createdAt": "2026-10-28T23:30:29.114Z",
+          "submittedAt": "2026-10-28T23:30:29.114Z",
+          "confirmedAt": "2026-10-28T23:35:28.781Z",
+          "terminalAt": "2026-10-28T23:35:28.781Z",
+          "changedAt": "2026-10-28T23:35:28.781Z",
+          "outcomeCode": null
+        }
+      },
+      "signer": {
+        "kind": "trust-m",
+        "algorithm": "ecdsa-p256-sha256",
+        "keySlot": "0xE0F3",
+        "enrolledAt": "2026-10-26T16:03:26.750Z",
+        "lastVerifiedAt": "2026-10-28T23:39:11.371Z",
+        "lastSignature": "CJWxu219/E+Wt0GlIsEBTiuCFZCpcMk5+/KUgro1CZEzYRr1BeeQbCoN9tOfXiXNRzXHcLATz1a1bNLO9bNIoA=="
+      },
+      "modules": [
+        {
+          "instanceId": "wheel",
+          "moduleType": "wheel.counter",
+          "driverId": "usb-rp2040-a3144e-lm393",
+          "moduleVersion": "0.2.1",
+          "schemaVersion": 1,
+          "state": "ready",
+          "observedAt": "2026-10-28T23:39:11.037759Z",
+          "provenance": "hardware",
+          "health": {
+            "checkedAt": "2026-10-28T23:39:11.037759Z"
+          },
+          "data": {}
+        }
+      ]
+    }
+  },
+  "events": {
+    "body": {
+      "schemaVersion": 3,
+      "installationId": "stream-game-sepolia-test-20261025-01",
+      "status": "available",
+      "generatedAt": "2026-10-28T23:39:16.823Z",
+      "catalogVersion": "public-activity-v4",
+      "chain": {
+        "target": "sepolia",
+        "chainId": "11155111",
+        "confirmations": "12",
+        "deploymentBlock": "11998937",
+        "economyDeploymentBlock": "11998950",
+        "indexedThroughBlock": "12015664",
+        "safeThroughBlock": "12015653",
+        "safeBlockHash": "0xdb9d13ee65b020d674c0651e5e21863bc444ac892337cde555c6f0142a3eadbf",
+        "safeBlockTimestamp": "2026-10-28T23:37:00.000Z"
+      },
+      "release": {
+        "id": "stream-game-sepolia-test-20261026-01",
+        "protocolRevision": "stream-game-1",
+        "rewardModelRevision": "funded-stream-q128-1"
+      },
+      "identities": {
+        "core": "0x74665daeca35a2303e767e76a2ff1fb6f93e119f",
+        "token": "0x6872bfa5ccc3e9e440c6c16e5ffdabb8dba4cc76",
+        "genesis": "0x0eaf3e0d40a0a8e5a6ac030b2459e9fb0b7905c6",
+        "mining": {
+          "proxy": "0x3bee588fc20de788bac17d33b41da7346cb27ec4",
+          "implementation": "0x08890b360c65fd878344bf6e23d1c36358433b4e",
+          "implementationVersion": "9",
+          "storageLayoutDigest": "0x136850fc0e19543752b7382cde164f10588dc3b4648e7d704f2f06394ead8b90"
+        },
+        "staking": null,
+        "launch": null
+      },
+      "nextCursor": null,
+      "category": "protocol",
+      "activeEventTypes": [
+        "system.settlement_completed",
+        "system.mining_checkpointed",
+        "account.rewards_claimed",
+        "account.claim_recipient_set",
+        "account.rewards_staked",
+        "account.sqk_staked",
+        "account.sqk_unstaked",
+        "nft.deposited",
+        "nft.withdrawn",
+        "nft.merged",
+        "nft.launch_claimed",
+        "measurement.distance_milestone",
+        "measurement.daily_distance_milestone",
+        "measurement.speed_milestone",
+        "measurement.speed_record",
+        "measurement.distance_streak"
+      ],
+      "events": [
+        {
+          "id": "chain:11155111:0x74665daeca35a2303e767e76a2ff1fb6f93e119f:0x1656b585be00b72032006a93e0ba0a1050e343f17e5f6cd5bc42e7aaf30c9b59:243:system.settlement_completed",
+          "eventVersion": 2,
+          "occurredAt": "2026-10-28T23:30:36.000Z",
+          "recordedAt": "2026-10-28T23:30:36.000Z",
+          "source": {
+            "kind": "chain",
+            "chainId": "11155111",
+            "target": "sepolia",
+            "releaseId": "stream-game-sepolia-test-20261026-01",
+            "contractAddress": "0x74665daeca35a2303e767e76a2ff1fb6f93e119f",
+            "blockNumber": "12015621",
+            "blockHash": "0x9d4e0287c38170fee0c9c7be0fd351d59ead3d303759cc2f4cde6c3b8073fe5a",
+            "transactionHash": "0x1656b585be00b72032006a93e0ba0a1050e343f17e5f6cd5bc42e7aaf30c9b59",
+            "transactionIndex": "103",
+            "logIndex": "243",
+            "confirmationStatus": "safe"
+          },
+          "type": "system.settlement_completed",
+          "payload": {
+            "previousSettledThroughRound": "345",
+            "settledThroughRound": "346",
+            "activeRoundCount": "1",
+            "workAdded": "609",
+            "completedBlockCount": "56",
+            "firstCompletedBlock": "2311",
+            "lastCompletedBlock": "2366",
+            "cumulativeWork": "25701",
+            "cumulativeBlockUnits": "2366143705150",
+            "blockHeight": "2366"
+          }
+        }
+      ]
+    }
+  },
+  "checkedAt": "2026-10-28T23:39:11.638Z"
+}

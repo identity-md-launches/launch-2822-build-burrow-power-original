@@ -10,14 +10,14 @@ import {
   wheelPower,
 } from "../src/api";
 const captured = JSON.parse(
-  readFileSync("artifacts/redesign-api-observations.json", "utf8"),
+  readFileSync("tests/fixtures/published-api.json", "utf8"),
 );
 const now = Date.parse(captured.checkedAt);
 const status = () => structuredClone(captured.status.body);
 const events = () => structuredClone(captured.events.body);
 const rejects = (fn: () => unknown, kind: string) =>
   assert.throws(fn, (e) => e instanceof DataError && e.kind === kind);
-test("captured live hardware schema is supported and idle generates exactly zero", () => {
+test("documented hardware schema is supported and idle generates exactly zero", () => {
   const s = validateStatus(status(), now);
   assert.equal(s.measurement.provenance, "hardware");
   assert.equal(wheelPower(s.measurement), 0);
@@ -93,7 +93,7 @@ test("unknown extra fields are harmless within a supported schema", () => {
   s.measurement.extra = 1;
   assert.ok(validateStatus(s, now));
 });
-test("captured safe settlement is a real confirmed round; zero-work settlements still qualify", () => {
+test("documented safe settlement has the supported fields; zero-work settlements still qualify", () => {
   const p = validateEvents(events(), now);
   assert.ok(p.events.length > 0);
   assert.ok(p.events.every((e) => e.source.confirmationStatus === "safe"));
@@ -122,6 +122,7 @@ test("new events are credited individually in chain order, with BigInt positions
   next.source.blockNumber = (
     BigInt(latest.source.blockNumber) + 10n
   ).toString();
+  next.payload.previousSettledThroughRound = latest.payload.settledThroughRound;
   next.payload.settledThroughRound = (
     BigInt(latest.payload.settledThroughRound) + 1n
   ).toString();
@@ -135,7 +136,7 @@ test("new events are credited individually in chain order, with BigInt positions
     0,
   );
 });
-test("unsupported event schemas, event versions, unsafe confirmations and wrong identity pause live mode", () => {
+test("unsupported event schemas, event versions, unsafe confirmations and wrong identity pause settlement unlocks", () => {
   for (const mutate of [
     (x: any) => (x.schemaVersion = 1),
     (x: any) => (x.catalogVersion = "future"),

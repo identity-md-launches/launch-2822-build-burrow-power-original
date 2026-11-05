@@ -1,0 +1,13 @@
+{
+  "url": "https://api.squeekchain.com/v1/status",
+  "checkedAt": "2026-11-05T11:09:04.931652+00:00",
+  "status": 200,
+  "headers": {
+    "Date": "Thu, 05 Nov 2026 11:09:04 GMT",
+    "Content-Type": "application/json",
+    "access-control-allow-origin": "*",
+    "cache-control": "public, max-age=0, s-maxage=1, must-revalidate",
+    "etag": "\"kLzp4LzFevyRmzYbdYnJQq5MqvFMIHfDTrLTS-OEVss.1f5eaf979245a297bcbbe2545232f9f6789e398b84164f7a92034a9c0a520512\"",
+    "x-request-id": "d7475d75-17a7-4953-a67d-8028b855544a"
+  }
+}

@@ -996,6 +996,35 @@ dd {
   color: var(--danger);
   margin-block: 16px;
 }
+.source-error p {
+  color: inherit;
+  line-height: 1.7;
+}
+.source-error p + p {
+  margin-block-start: 8px;
+}
+.settlement-note {
+  order: 7;
+  margin-block-start: 16px;
+  padding-block-start: 12px;
+  border-block-start: 1px solid var(--line);
+  font-size: var(--small);
+  line-height: 1.5;
+}
+.settlement-note strong {
+  color: var(--danger);
+}
+.settlement-note.settlements-ready strong {
+  color: var(--fresh);
+}
+.settlement-note p {
+  margin-block-start: 4px;
+}
+.settlement-note button {
+  margin-block-start: 4px;
+  font-size: inherit;
+  text-align: start;
+}
 .journal {
   margin-bottom: 24px;
 }

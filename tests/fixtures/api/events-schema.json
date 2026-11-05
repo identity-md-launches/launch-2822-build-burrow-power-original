@@ -1,0 +1,1461 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/d0_response",
+  "$defs": {
+    "d2_installationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "d1_unavailable": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 3
+        },
+        "installationId": {
+          "$ref": "#/$defs/d2_installationId"
+        },
+        "status": {
+          "const": "unavailable"
+        },
+        "reason": {
+          "enum": [
+            "indexer_disabled",
+            "not_yet_safe",
+            "indexer_unavailable",
+            "indexer_mismatch",
+            "source_disabled"
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "installationId",
+        "status",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "d4_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "d5_activityCategory": {
+      "enum": [
+        "all",
+        "protocol",
+        "players",
+        "measurement"
+      ]
+    },
+    "d7_decimal": {
+      "type": "string",
+      "format": "uint256-decimal"
+    },
+    "d8_bytes32": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
+    "d6_chain": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "enum": [
+            "anvil",
+            "sepolia",
+            "mainnet"
+          ]
+        },
+        "chainId": {
+          "$ref": "#/$defs/d7_decimal"
+        },
+        "confirmations": {
+          "const": "12"
+        },
+        "deploymentBlock": {
+          "$ref": "#/$defs/d7_decimal"
+        },
+        "economyDeploymentBlock": {
+          "$ref": "#/$defs/d7_decimal"
+        },
+        "indexedThroughBlock": {
+          "$ref": "#/$defs/d7_decimal"
+        },
+        "safeThroughBlock": {
+          "$ref": "#/$defs/d7_decimal"
+        },
+        "safeBlockHash": {
+          "$ref": "#/$defs/d8_bytes32"
+        },
+        "safeBlockTimestamp": {
+          "$ref": "#/$defs/d4_timestamp"
+        }
+      },
+      "required": [
+        "target",
+        "chainId",
+        "confirmations",
+        "deploymentBlock",
+        "economyDeploymentBlock",
+        "indexedThroughBlock",
+        "safeThroughBlock",
+        "safeBlockHash",
+        "safeBlockTimestamp"
+      ],
+      "additionalProperties": false
+    },
+    "d10_versionId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+    },
+    "d11_revisionId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.-]{2,63}$"
+    },
+    "d9_release": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/d10_versionId"
+        },
+        "protocolRevision": {
+          "$ref": "#/$defs/d11_revisionId"
+        },
+        "rewardModelRevision": {
+          "$ref": "#/$defs/d11_revisionId"
+        }
+      },
+      "required": [
+        "id",
+        "protocolRevision",
+        "rewardModelRevision"
+      ],
+      "additionalProperties": false
+    },
+    "d13_address": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{40}$"
+    },
+    "d14_proxyIdentity": {
+      "type": "object",
+      "properties": {
+        "proxy": {
+          "$ref": "#/$defs/d13_address"
+        },
+        "implementation": {
+          "$ref": "#/$defs/d13_address"
+        },
+        "implementationVersion": {
+          "$ref": "#/$defs/d7_decimal"
+        },
+        "storageLayoutDigest": {
+          "$ref": "#/$defs/d8_bytes32"
+        }
+      },
+      "required": [
+        "proxy",
+        "implementation",
+        "implementationVersion",
+        "storageLayoutDigest"
+      ],
+      "additionalProperties": false
+    },
+    "d12_identities": {
+      "type": "object",
+      "properties": {
+        "core": {
+          "$ref": "#/$defs/d13_address"
+        },
+        "tokenFactory": {
+          "$ref": "#/$defs/d13_address"
+        },
+        "token": {
+          "$ref": "#/$defs/d13_address"
+        },
+        "genesis": {
+          "$ref": "#/$defs/d13_address"
+        },
+        "mining": {
+          "$ref": "#/$defs/d14_proxyIdentity"
+        },
+        "staking": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/d14_proxyIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "launch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/d13_address"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "core",
+        "tokenFactory",
+        "token",
+        "genesis",
+        "mining",
+        "staking",
+        "launch"
+      ],
+      "additionalProperties": false
+    },
+    "d15_eventType": {
+      "enum": [
+        "system.settlement_completed",
+        "system.mining_checkpointed",
+        "account.rewards_claimed",
+        "account.claim_recipient_set",
+        "account.rewards_staked",
+        "account.sqk_staked",
+        "account.sqk_unstaked",
+        "nft.deposited",
+        "nft.withdrawn",
+        "nft.merged",
+        "nft.launch_claimed",
+        "measurement.distance_milestone",
+        "measurement.daily_distance_milestone",
+        "measurement.speed_milestone",
+        "measurement.speed_record",
+        "measurement.rpm_record",
+        "measurement.distance_streak"
+      ]
+    },
+    "d19_eventId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "d20_chainSource": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "chain"
+        },
+        "chainId": {
+          "$ref": "#/$defs/d7_decimal"
+        },
+        "target": {
+          "enum": [
+            "anvil",
+            "sepolia",
+            "mainnet"
+          ]
+        },
+        "releaseId": {
+          "$ref": "#/$defs/d10_versionId"
+        },
+        "contractAddress": {
+          "$ref": "#/$defs/d13_address"
+        },
+        "blockNumber": {
+          "$ref": "#/$defs/d7_decimal"
+        },
+        "blockHash": {
+          "$ref": "#/$defs/d8_bytes32"
+        },
+        "transactionHash": {
+          "$ref": "#/$defs/d8_bytes32"
+        },
+        "transactionIndex": {
+          "$ref": "#/$defs/d7_decimal"
+        },
+        "logIndex": {
+          "$ref": "#/$defs/d7_decimal"
+        },
+        "confirmationStatus": {
+          "const": "safe"
+        }
+      },
+      "required": [
+        "kind",
+        "chainId",
+        "target",
+        "releaseId",
+        "contractAddress",
+        "blockNumber",
+        "blockHash",
+        "transactionHash",
+        "transactionIndex",
+        "logIndex",
+        "confirmationStatus"
+      ],
+      "additionalProperties": false
+    },
+    "d18_chainEnvelopeV2": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/d19_eventId"
+        },
+        "eventVersion": {
+          "const": 2
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/d4_timestamp"
+        },
+        "recordedAt": {
+          "$ref": "#/$defs/d4_timestamp"
+        },
+        "source": {
+          "$ref": "#/$defs/d20_chainSource"
+        }
+      },
+      "required": [
+        "id",
+        "eventVersion",
+        "occurredAt",
+        "recordedAt",
+        "source"
+      ]
+    },
+    "d17_settlementCompleted": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d18_chainEnvelopeV2"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "system.settlement_completed"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "previousSettledThroughRound": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "settledThroughRound": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "activeRoundCount": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "workAdded": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "completedBlockCount": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "firstCompletedBlock": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/d7_decimal"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "lastCompletedBlock": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/d7_decimal"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cumulativeWork": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "blockHeight": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "cumulativeBlockUnits": {
+                  "$ref": "#/$defs/d7_decimal"
+                }
+              },
+              "required": [
+                "previousSettledThroughRound",
+                "settledThroughRound",
+                "activeRoundCount",
+                "workAdded",
+                "completedBlockCount",
+                "firstCompletedBlock",
+                "lastCompletedBlock",
+                "cumulativeWork",
+                "blockHeight",
+                "cumulativeBlockUnits"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d22_eventAsset": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/d13_address"
+        },
+        "symbol": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]{1,16}$"
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      },
+      "required": [
+        "address",
+        "symbol",
+        "decimals"
+      ],
+      "additionalProperties": false
+    },
+    "d21_miningCheckpointed": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d18_chainEnvelopeV2"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "system.mining_checkpointed"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "completedBlockCount": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "cumulativeWork": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "amountBaseUnits": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "asset": {
+                  "$ref": "#/$defs/d22_eventAsset"
+                },
+                "afterRound": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "throughRound": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "cumulativeBlockUnits": {
+                  "$ref": "#/$defs/d7_decimal"
+                }
+              },
+              "required": [
+                "afterRound",
+                "throughRound",
+                "completedBlockCount",
+                "cumulativeWork",
+                "amountBaseUnits",
+                "asset",
+                "cumulativeBlockUnits"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d24_chainEnvelopeV1": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/d19_eventId"
+        },
+        "eventVersion": {
+          "const": 1
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/d4_timestamp"
+        },
+        "recordedAt": {
+          "$ref": "#/$defs/d4_timestamp"
+        },
+        "source": {
+          "$ref": "#/$defs/d20_chainSource"
+        }
+      },
+      "required": [
+        "id",
+        "eventVersion",
+        "occurredAt",
+        "recordedAt",
+        "source"
+      ]
+    },
+    "d23_accountRewardsClaimed": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d24_chainEnvelopeV1"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "account.rewards_claimed"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "recipient": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "amountBaseUnits": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "asset": {
+                  "$ref": "#/$defs/d22_eventAsset"
+                }
+              },
+              "required": [
+                "account",
+                "recipient",
+                "amountBaseUnits",
+                "asset"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d25_accountClaimRecipientSet": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d24_chainEnvelopeV1"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "account.claim_recipient_set"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "recipient": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/d13_address"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "account",
+                "recipient"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d26_accountRewardsStaked": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d24_chainEnvelopeV1"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "account.rewards_staked"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "amountBaseUnits": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "principalBaseUnits": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "freshUntilRound": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "asset": {
+                  "$ref": "#/$defs/d22_eventAsset"
+                }
+              },
+              "required": [
+                "account",
+                "amountBaseUnits",
+                "principalBaseUnits",
+                "freshUntilRound",
+                "asset"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d27_accountSqkStaked": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d24_chainEnvelopeV1"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "account.sqk_staked"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "amountBaseUnits": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "principalBaseUnits": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "freshUntilRound": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "asset": {
+                  "$ref": "#/$defs/d22_eventAsset"
+                }
+              },
+              "required": [
+                "account",
+                "amountBaseUnits",
+                "principalBaseUnits",
+                "freshUntilRound",
+                "asset"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d28_accountSqkUnstaked": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d18_chainEnvelopeV2"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "account.sqk_unstaked"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "amountBaseUnits": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "feeBaseUnits": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "netBaseUnits": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "asset": {
+                  "$ref": "#/$defs/d22_eventAsset"
+                }
+              },
+              "required": [
+                "account",
+                "amountBaseUnits",
+                "feeBaseUnits",
+                "netBaseUnits",
+                "asset"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d29_nftDeposited": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d24_chainEnvelopeV1"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "nft.deposited"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "collection": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "tokenId": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "basePower": {
+                  "$ref": "#/$defs/d7_decimal"
+                }
+              },
+              "required": [
+                "account",
+                "collection",
+                "tokenId",
+                "basePower"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d30_nftWithdrawn": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d24_chainEnvelopeV1"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "nft.withdrawn"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "collection": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "tokenId": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "basePower": {
+                  "$ref": "#/$defs/d7_decimal"
+                }
+              },
+              "required": [
+                "account",
+                "collection",
+                "tokenId",
+                "basePower"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d31_nftMerged": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d24_chainEnvelopeV1"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "nft.merged"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "collection": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "survivorTokenId": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "donorTokenId": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "level": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 10
+                },
+                "nextMergeHeight": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "custody": {
+                  "enum": [
+                    "wallet",
+                    "staking"
+                  ]
+                },
+                "nftPowerDelta": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/d7_decimal"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "account",
+                "collection",
+                "survivorTokenId",
+                "donorTokenId",
+                "level",
+                "nextMergeHeight",
+                "custody",
+                "nftPowerDelta"
+              ],
+              "additionalProperties": false,
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "custody": {
+                      "const": "wallet"
+                    },
+                    "nftPowerDelta": {
+                      "type": "null"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "custody": {
+                      "const": "staking"
+                    },
+                    "nftPowerDelta": {
+                      "$ref": "#/$defs/d7_decimal"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d32_nftLaunchClaimed": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d24_chainEnvelopeV1"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "nft.launch_claimed"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "account": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "depositor": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "collection": {
+                  "$ref": "#/$defs/d13_address"
+                },
+                "tokenId": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "receiptId": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "entryId": {
+                  "$ref": "#/$defs/d7_decimal"
+                }
+              },
+              "required": [
+                "account",
+                "depositor",
+                "collection",
+                "tokenId",
+                "receiptId",
+                "entryId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d35_measurementSource": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "measurement"
+        },
+        "installationId": {
+          "$ref": "#/$defs/d2_installationId"
+        },
+        "receiptCursor": {
+          "$ref": "#/$defs/d7_decimal"
+        },
+        "telemetryId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/d4_timestamp"
+        },
+        "receivedAt": {
+          "$ref": "#/$defs/d4_timestamp"
+        },
+        "policyVersion": {
+          "$ref": "#/$defs/d10_versionId"
+        },
+        "disposition": {
+          "const": "accepted"
+        }
+      },
+      "required": [
+        "kind",
+        "installationId",
+        "receiptCursor",
+        "telemetryId",
+        "observedAt",
+        "receivedAt",
+        "policyVersion",
+        "disposition"
+      ],
+      "additionalProperties": false
+    },
+    "d34_measurementEnvelope": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/d19_eventId"
+        },
+        "eventVersion": {
+          "const": 1
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/d4_timestamp"
+        },
+        "recordedAt": {
+          "$ref": "#/$defs/d4_timestamp"
+        },
+        "source": {
+          "$ref": "#/$defs/d35_measurementSource"
+        }
+      },
+      "required": [
+        "id",
+        "eventVersion",
+        "occurredAt",
+        "recordedAt",
+        "source"
+      ]
+    },
+    "d33_distanceMilestone": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d34_measurementEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "measurement.distance_milestone"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "thresholdDistanceMm": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "observedLifetimeDistanceMm": {
+                  "$ref": "#/$defs/d7_decimal"
+                }
+              },
+              "required": [
+                "thresholdDistanceMm",
+                "observedLifetimeDistanceMm"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d37_date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "d36_dailyDistanceMilestone": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d34_measurementEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "measurement.daily_distance_milestone"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "thresholdDistanceMm": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "observedDayDistanceMm": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "utcDate": {
+                  "$ref": "#/$defs/d37_date"
+                }
+              },
+              "required": [
+                "thresholdDistanceMm",
+                "observedDayDistanceMm",
+                "utcDate"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d38_speedMilestone": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d34_measurementEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "measurement.speed_milestone"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "thresholdSpeedMmPerSecond": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "observedSpeedMmPerSecond": {
+                  "$ref": "#/$defs/d7_decimal"
+                }
+              },
+              "required": [
+                "thresholdSpeedMmPerSecond",
+                "observedSpeedMmPerSecond"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d39_speedRecord": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d34_measurementEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "measurement.speed_record"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "previousRecordMmPerSecond": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/d7_decimal"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recordMmPerSecond": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "observedSpeedMmPerSecond": {
+                  "$ref": "#/$defs/d7_decimal"
+                }
+              },
+              "required": [
+                "previousRecordMmPerSecond",
+                "recordMmPerSecond",
+                "observedSpeedMmPerSecond"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d40_rpmRecord": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d34_measurementEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "measurement.rpm_record"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "previousRecordRpmMilli": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/d7_decimal"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "recordRpmMilli": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "observedRpmMilli": {
+                  "$ref": "#/$defs/d7_decimal"
+                }
+              },
+              "required": [
+                "previousRecordRpmMilli",
+                "recordRpmMilli",
+                "observedRpmMilli"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d41_distanceStreak": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/d34_measurementEnvelope"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "measurement.distance_streak"
+            },
+            "payload": {
+              "type": "object",
+              "properties": {
+                "days": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 3650
+                },
+                "minimumDailyDistanceMm": {
+                  "$ref": "#/$defs/d7_decimal"
+                },
+                "endingUtcDate": {
+                  "$ref": "#/$defs/d37_date"
+                }
+              },
+              "required": [
+                "days",
+                "minimumDailyDistanceMm",
+                "endingUtcDate"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "payload"
+          ]
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "d16_event": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/d17_settlementCompleted"
+        },
+        {
+          "$ref": "#/$defs/d21_miningCheckpointed"
+        },
+        {
+          "$ref": "#/$defs/d23_accountRewardsClaimed"
+        },
+        {
+          "$ref": "#/$defs/d25_accountClaimRecipientSet"
+        },
+        {
+          "$ref": "#/$defs/d26_accountRewardsStaked"
+        },
+        {
+          "$ref": "#/$defs/d27_accountSqkStaked"
+        },
+        {
+          "$ref": "#/$defs/d28_accountSqkUnstaked"
+        },
+        {
+          "$ref": "#/$defs/d29_nftDeposited"
+        },
+        {
+          "$ref": "#/$defs/d30_nftWithdrawn"
+        },
+        {
+          "$ref": "#/$defs/d31_nftMerged"
+        },
+        {
+          "$ref": "#/$defs/d32_nftLaunchClaimed"
+        },
+        {
+          "$ref": "#/$defs/d33_distanceMilestone"
+        },
+        {
+          "$ref": "#/$defs/d36_dailyDistanceMilestone"
+        },
+        {
+          "$ref": "#/$defs/d38_speedMilestone"
+        },
+        {
+          "$ref": "#/$defs/d39_speedRecord"
+        },
+        {
+          "$ref": "#/$defs/d40_rpmRecord"
+        },
+        {
+          "$ref": "#/$defs/d41_distanceStreak"
+        }
+      ]
+    },
+    "d42_cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "d3_available": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 3
+        },
+        "installationId": {
+          "$ref": "#/$defs/d2_installationId"
+        },
+        "status": {
+          "const": "available"
+        },
+        "generatedAt": {
+          "$ref": "#/$defs/d4_timestamp"
+        },
+        "catalogVersion": {
+          "const": "public-activity-v4"
+        },
+        "category": {
+          "$ref": "#/$defs/d5_activityCategory"
+        },
+        "chain": {
+          "$ref": "#/$defs/d6_chain"
+        },
+        "release": {
+          "$ref": "#/$defs/d9_release"
+        },
+        "identities": {
+          "$ref": "#/$defs/d12_identities"
+        },
+        "activeEventTypes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 17,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/d15_eventType"
+          }
+        },
+        "events": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/d16_event"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/d42_cursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "installationId",
+        "status",
+        "generatedAt",
+        "catalogVersion",
+        "category",
+        "chain",
+        "release",
+        "identities",
+        "activeEventTypes",
+        "events",
+        "nextCursor"
+      ],
+      "additionalProperties": false
+    },
+    "d0_response": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/d1_unavailable"
+        },
+        {
+          "$ref": "#/$defs/d3_available"
+        }
+      ]
+    }
+  },
+  "$comment": "Public response structure from source snapshot 2454d346d25e5b9dc48af7e547ce1038b6fdb5cc. See endpoint notes for semantic constraints."
+}

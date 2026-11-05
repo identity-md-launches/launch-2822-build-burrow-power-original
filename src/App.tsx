@@ -5,9 +5,11 @@ import {
   DataError,
   assertFresh,
   consumeEvents,
-  fetchLive,
+  fetchWheel,
+  fetchSettlements,
   wheelPower,
-  type LiveSnapshot,
+  type WheelSnapshot,
+  type EventPage,
 } from "./api";
 import {
   CAPACITY,
@@ -62,8 +64,11 @@ export function App() {
   const [playing, setPlaying] = useState(
     location.hash === "#play" && !!initial.save.runs[initial.save.activeMode],
   );
-  const [live, setLive] = useState<LiveSnapshot | null>(null);
+  const [live, setLive] = useState<WheelSnapshot | null>(null);
   const [error, setError] = useState<DataError | null>(null);
+  const [settlements, setSettlements] = useState<EventPage | null>(null);
+  const [settlementError, setSettlementError] = useState<DataError | null>(null);
+  const [settlementLoading, setSettlementLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
   const [hover, setHover] = useState<string | null>(null);
@@ -75,6 +80,7 @@ export function App() {
     lastFocus = useRef<HTMLElement | null>(null);
   const busy = useRef(false),
     mounted = useRef(true);
+  const settlementBusy = useRef(false);
   const run = save.runs[mode],
     profile = save.profiles[mode];
   const currentLevel = playing && run ? run.level : level;
@@ -86,12 +92,15 @@ export function App() {
   if (live && !error) {
     try {
       assertFresh(live.status.measurement, tick);
-      fresh = tick - Date.parse(live.page.safeBlockTimestamp) <= 600000;
+      fresh = true;
     } catch {
       /* The idle UI does not reuse stale observations. */
     }
   }
   const liveReady = fresh && storage;
+  const settlementsReady = !!settlements && !settlementError &&
+    settlements.installationId === live?.status.installationId &&
+    tick - Date.parse(settlements.safeBlockTimestamp) <= 600000;
   const actualActive =
     mode === "live" &&
     fresh &&
@@ -103,16 +112,16 @@ export function App() {
     saveRef.current = value;
     setSave(value);
   }, []);
-  const refresh = useCallback(async () => {
-    if (busy.current) return;
-    busy.current = true;
-    setLoading(true);
+  const refreshSettlements = useCallback(async (installationId: string) => {
+    if (settlementBusy.current) return;
+    settlementBusy.current = true;
+    setSettlementLoading(true);
     try {
-      const snapshot = await fetchLive(saveRef.current.watermarks);
+      const page = await fetchSettlements(saveRef.current.watermarks, installationId);
       if (!mounted.current) return;
       const current = saveRef.current;
       if (storage) {
-        const claimed = consumeEvents(snapshot.page, current.watermarks);
+        const claimed = consumeEvents(page, current.watermarks);
         if (claimed.added) {
           commit({
             ...current,
@@ -132,24 +141,44 @@ export function App() {
           );
         }
       }
-      setLive(snapshot);
-      setError(null);
-      setTick(Date.now());
+      setSettlements(page);
+      setSettlementError(null);
     } catch (e) {
       if (mounted.current)
-        setError(
+        setSettlementError(
           e instanceof DataError
             ? e
             : new DataError(
                 "outage",
-                "Unable to reach Squeekchain. Retry or play practice.",
+                "Unable to reach the settlement feed. Retry to check for blueprint unlocks.",
               ),
         );
+    } finally {
+      settlementBusy.current = false;
+      if (mounted.current) setSettlementLoading(false);
+    }
+  }, [commit, storage]);
+  const refresh = useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setLoading(true);
+    try {
+      const snapshot = await fetchWheel();
+      if (!mounted.current) return;
+      setLive(snapshot);
+      setError(null);
+      setTick(Date.now());
+      // Publish wheel status immediately; history may be slow or unsupported.
+      void refreshSettlements(snapshot.status.installationId);
+    } catch (e) {
+      if (mounted.current) setError(e instanceof DataError ? e : new DataError(
+        "outage", "Unable to reach the wheel. Retry or play practice.",
+      ));
     } finally {
       busy.current = false;
       if (mounted.current) setLoading(false);
     }
-  }, [commit, storage]);
+  }, [refreshSettlements]);
   useEffect(() => {
     mounted.current = true;
     void refresh();
@@ -213,11 +242,6 @@ export function App() {
     if (!live || error || !storage) return false;
     try {
       assertFresh(live.status.measurement);
-      if (Date.now() - Date.parse(live.page.safeBlockTimestamp) > 600000)
-        throw new DataError(
-          "stale",
-          "Confirmed settlement data is stale. Retry to continue. No turn was spent.",
-        );
       return true;
     } catch (e) {
       setError(e as DataError);
@@ -536,7 +560,9 @@ export function App() {
                   {mode === "practice"
                     ? "Practice uses a designed power sequence. No live data."
                     : liveReady
-                      ? "Fresh hardware activity adds power each encounter."
+                      ? live?.status.measurement.coreStatus === "IDLE"
+                        ? "Fresh hardware · 0 RPM. Play with your starting reserve."
+                        : "Fresh hardware activity adds power each encounter."
                       : loading
                         ? "Checking official Squeekchain data…"
                         : (error?.message ??
@@ -837,6 +863,24 @@ export function App() {
                 </>
               )
             )}
+            {mode === "live" && (
+              <div className={`settlement-note ${settlementsReady ? "settlements-ready" : ""}`} role="status">
+                <strong>{settlementsReady ? "Settlement unlocks verified" : "Blueprint unlocks paused"}</strong>
+                <p>{settlementsReady
+                  ? "Safe events checked. Unlocks and scores stay local."
+                  : "Your saved unlocks are safe. Wheel play uses its own fresh reading."}</p>
+                {!settlementsReady && (
+                  <button type="button" className="text-button" onClick={() => {
+                    const details = document.querySelector<HTMLDetailsElement>(".source-details");
+                    if (details) {
+                      details.open = true;
+                      details.querySelector("summary")?.focus();
+                      details.scrollIntoView({ block: "start" });
+                    }
+                  }}>View feed error and retry</button>
+                )}
+              </div>
+            )}
           </section>
         </div>
         <section className="hollows" aria-labelledby="hollows-title">
@@ -973,27 +1017,43 @@ export function App() {
                   <dt>Wheel reading</dt>
                   <dd>
                     {live
-                      ? `${time(live.status.measurement.observedAt)} · ${live.status.measurement.rpmMilli / 1000} RPM · hardware`
+                      ? `${fresh ? "Fresh" : "Last seen; not live"} · ${time(live.status.measurement.observedAt)} · ${live.status.measurement.rpmMilli / 1000} RPM · hardware`
                       : "Not available"}
                   </dd>
                 </div>
                 <div>
-                  <dt>Last checked</dt>
+                  <dt>Last successful wheel check</dt>
                   <dd>{live ? time(live.checkedAt) : "Not available"}</dd>
                 </div>
                 <div>
-                  <dt>Confirmed round</dt>
-                  <dd>{save.lastRound ?? "Not observed yet"} · Sepolia</dd>
+                  <dt>Settled round · status API</dt>
+                  <dd data-testid="current-round">{fresh && live?.settledRound != null
+                    ? `${live?.settledRound} · Sepolia`
+                    : "Not currently verified"}</dd>
                 </div>
+                {save.lastRound !== null && <div>
+                  <dt>Local last-seen settlement round</dt>
+                  <dd data-testid="local-round">{save.lastRound} · saved history, may be from an earlier installation</dd>
+                </div>}
                 <div>
+                  <dt>Round source</dt>
+                  <dd>{live?.roundError ?? (fresh && live?.settledRound != null
+                    ? "Validated status builder anchor. This display never grants blueprints."
+                    : "No currently validated round. Saved history does not replace the API.")}</dd>
+                </div>
+                <div id="source-feed">
                   <dt>Settlements</dt>
-                  <dd>
-                    API-verified, 12 confirmations. No wallet or score
-                    transactions.
-                  </dd>
+                  <dd>{settlementsReady ? "Verified safe Sepolia events · 12 confirmations"
+                    : settlementLoading && !settlementError ? "Checking the event feed; unlocks paused"
+                    : "Unverified feed; settlement unlocks paused"}</dd>
                 </div>
               </dl>
               {error && <p className="source-error">{error.message}</p>}
+              {!fresh && live && !error && <p className="source-error">Wheel data is older than 120 seconds. Live play is paused. Refresh or play practice.</p>}
+              {!settlementsReady && <div className="source-error" role="status">
+                <p>{settlementError?.message ?? (settlementLoading ? "Checking settlement history…" : settlements ? "The settlement feed is stale. Retry to verify new unlocks." : "Waiting for a validated wheel installation before checking settlement history.")}</p>
+                <p>Only new settlement unlocks are paused. Saved blueprints, scores and watermarks are kept. Retry the feed when it recovers.</p>
+              </div>}
               <div className="source-actions">
                 <button
                   type="button"
@@ -1007,6 +1067,11 @@ export function App() {
                 <a href={DOCS} target="_blank" rel="noreferrer">
                   Read the API reference ↗
                 </a>
+                <button type="button" className="secondary"
+                  disabled={!live || settlementLoading}
+                  onClick={() => live && void refreshSettlements(live.status.installationId)}>
+                  {settlementLoading ? "Checking feed…" : "Retry settlement feed"}
+                </button>
               </div>
             </div>
           </details>

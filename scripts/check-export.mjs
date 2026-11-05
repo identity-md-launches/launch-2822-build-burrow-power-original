@@ -60,9 +60,13 @@ const required = [
   "artifacts/browser-validation.json",
   "artifacts/live-validation.json",
   "artifacts/taste.json",
-  "artifacts/rendered-measurements.json",
-  "artifacts/publication.json",
-  "artifacts/PULL_REQUEST.md",
+  "artifacts/interaction-validation.json",
+  "artifacts/unit-validation.json",
+  "artifacts/api-research.md",
+  "tests/fixtures/api/status.json",
+  "tests/fixtures/api/events.json",
+  "tests/fixtures/api/events-schema.json",
+  "tests/fixtures/published-api.json",
 ];
 for (const path of required)
   assert.ok((await stat(path)).size > 0, `Required output is empty: ${path}`);
@@ -97,9 +101,17 @@ const live = JSON.parse(
   await readFile("artifacts/live-validation.json", "utf8"),
 );
 const taste = JSON.parse(await readFile("artifacts/taste.json", "utf8"));
-assert.equal(browser.result, "passed");
-assert.equal(live.result, "passed");
-assert.ok(taste.checks.length === 16 && taste.checks.every((c) => c.passed));
+const interactions = JSON.parse(await readFile("artifacts/interaction-validation.json", "utf8"));
+const unit = JSON.parse(await readFile("artifacts/unit-validation.json", "utf8"));
+assert.equal(interactions.result, "passed");
+assert.equal(unit.fail, 0);
+assert.equal(unit.pass, unit.tests);
+assert.ok(["passed", "unperformed"].includes(browser.result));
+assert.ok(["passed", "unperformed"].includes(live.result));
+// Export integrity is separate from rendered quality. Never turn an unavailable
+// browser or an unmeasured taste check into a passing behavior claim.
+const renderedVerified = browser.result === "passed" && live.result === "passed" &&
+  taste.checks.length === 16 && taste.checks.every((c) => c.passed);
 const report = {
   at: new Date().toISOString(),
   requiredOutputCount: required.length,
@@ -109,21 +121,25 @@ const report = {
   socialImage: { format: "PNG", width: 1200, height: 630 },
   productionIndexSha256: createHash("sha256").update(html).digest("hex"),
   byteLimit: limit,
-  bundleFiles: 0,
-  bundleBytes: 0,
-  bundleWithinLimit: true,
+  sourceTreeFiles: 0,
+  sourceTreeBytes: 0,
+  sourceTreeBelowRawByteBudget: true,
+  gitBundleMeasured: false,
+  gitBundleLimitation: "Full Git bundle creation was unavailable in this read-only partial checkout. Raw source/export sizes are conservative task-file evidence, not a network upload acceptance guarantee.",
+  renderedVerified,
+  validation: { unit: unit.result, domInteractions: interactions.result, browser: browser.result, liveBrowser: live.result, tasteMeasured: taste.checks.length === 16 },
   dependencyOrCacheDirectoriesBundled: false,
   protectedMetadataAndTaskInputsExcluded: true,
-  remoteResults: "Unavailable; no commit, PR or new hosted version claimed",
+  remoteResults: "Source and static export only; no deployment or new hosted version claimed",
 };
 for (let i = 0; i < 5; i++) {
   const files = await filesIn();
-  report.bundleFiles = files.length;
-  report.bundleBytes = (await Promise.all(files.map((f) => stat(f)))).reduce(
+  report.sourceTreeFiles = files.length;
+  report.sourceTreeBytes = (await Promise.all(files.map((f) => stat(f)))).reduce(
     (n, f) => n + f.size,
     0,
   );
-  assert.ok(report.bundleBytes < limit, "Bundle exceeds 8 MiB");
+  assert.ok(report.sourceTreeBytes < limit, "Raw task files exceed 8 MiB; inspect the compressed submission size");
   await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n");
 }
 const finalFiles = await filesIn();
@@ -132,14 +148,15 @@ assert.equal(
     (n, f) => n + f.size,
     0,
   ),
-  report.bundleBytes,
+  report.sourceTreeBytes,
 );
 console.log(
   JSON.stringify({
     requiredOutputsPresent: true,
     relativeRuntimeAssetsValid: true,
-    bundleBytes: report.bundleBytes,
+    sourceTreeBytes: report.sourceTreeBytes,
     byteLimit: limit,
     dependencyOrCacheDirectoriesBundled: false,
+    renderedVerified,
   }),
 );

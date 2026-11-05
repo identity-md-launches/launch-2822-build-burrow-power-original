@@ -8,7 +8,7 @@ const { chromium, webkit } = playwrightModule.default ?? playwrightModule;
 const AxeModule = requireTool("@axe-core/playwright");
 const AxeBuilder = AxeModule.default ?? AxeModule;
 const captured = JSON.parse(
-  await readFile("artifacts/redesign-api-observations.json", "utf8"),
+  await readFile("tests/fixtures/published-api.json", "utf8"),
 );
 const out = "test/scratch/browser";
 await mkdir(out, { recursive: true });
@@ -22,6 +22,7 @@ const report = {
   screenshots: [],
 };
 let failures = 0;
+let aborted = false;
 async function check(name, fn) {
   try {
     const detail = await fn();
@@ -293,6 +294,7 @@ try {
         .click();
       await page.locator(".source-fresh").waitFor({ state: "attached" });
       await page.locator(".start-button:enabled").waitFor();
+      await page.locator(".settlements-ready").waitFor();
       assert.equal((await readSave(page)).profiles.live.blueprints, 1);
       await page.locator(".source-details summary").click();
       await page.getByRole("button", { name: "Refresh official data" }).click();
@@ -532,12 +534,16 @@ try {
     );
     console.log("UNPERFORMED WebKit: browser runtime unavailable");
   }
+} catch {
+  aborted = true;
+  report.limitations.push("Chromium could not launch or the suite aborted before completing. Rendered checks are unperformed; no pass is claimed.");
+  console.error("UNPERFORMED: rendered interaction suite could not complete.");
 } finally {
-  report.result = failures ? "failed" : "passed";
+  report.result = aborted ? "unperformed" : failures ? "failed" : "passed";
   await writeFile(
     "artifacts/browser-validation.json",
     JSON.stringify(report, null, 2) + "\n",
   );
   await server.close();
 }
-if (failures) process.exitCode = 1;
+if (failures || aborted) process.exitCode = 1;
